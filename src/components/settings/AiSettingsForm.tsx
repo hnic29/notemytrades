@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { CheckCircle2, XCircle } from "lucide-react";
-import { updateAiSettings, testAiConnection } from "@/lib/actions/settings";
+import { CheckCircle2, XCircle, Search } from "lucide-react";
+import { updateAiSettings, testAiConnection, listAiModels } from "@/lib/actions/settings";
 
 export function AiSettingsForm({
   initialBaseUrl,
@@ -18,8 +18,11 @@ export function AiSettingsForm({
   const [model, setModel] = useState(initialModel);
   const [saved, setSaved] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [models, setModels] = useState<string[] | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
   const [isSaving, startSaving] = useTransition();
   const [isTesting, startTesting] = useTransition();
+  const [isScanning, startScanning] = useTransition();
 
   const save = () => {
     startSaving(async () => {
@@ -39,6 +42,24 @@ export function AiSettingsForm({
           ? { ok: true, message: result.text }
           : { ok: false, message: result.error },
       );
+    });
+  };
+
+  const scan = () => {
+    startScanning(async () => {
+      setScanError(null);
+      setModels(null);
+      // Scan against whatever's currently typed, not just what's saved.
+      await updateAiSettings({ aiBaseUrl: baseUrl, aiApiKey: apiKey, aiModel: model });
+      const result = await listAiModels();
+      if (result.ok) {
+        setModels(result.models);
+        if (result.models.length === 0) {
+          setScanError("Endpoint responded but listed no models.");
+        }
+      } else {
+        setScanError(result.error);
+      }
     });
   };
 
@@ -65,12 +86,42 @@ export function AiSettingsForm({
         label="Model"
         hint="Most gateways (including Omniroute) need a provider/model prefix, not just a bare name — e.g. openai/default or openai/gpt-4o-mini, matching however it's configured."
       >
-        <input
-          value={model}
-          onChange={(e) => setModel(e.target.value)}
-          placeholder="openai/default"
-          className={inputClass}
-        />
+        <div className="flex gap-2">
+          <input
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            placeholder="openai/default"
+            className={inputClass}
+          />
+          <button
+            type="button"
+            onClick={scan}
+            disabled={isScanning || !baseUrl.trim()}
+            title={!baseUrl.trim() ? "Set a Base URL first" : "Scan the endpoint for available models"}
+            className="flex shrink-0 items-center gap-1.5 rounded-md border border-border-strong px-3 py-2 text-sm text-text-muted hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Search className="h-3.5 w-3.5" /> {isScanning ? "Scanning…" : "Scan"}
+          </button>
+        </div>
+
+        {models && models.length > 0 && (
+          <select
+            value={models.includes(model) ? model : ""}
+            onChange={(e) => e.target.value && setModel(e.target.value)}
+            className={`${inputClass} mt-2`}
+          >
+            <option value="" disabled>
+              {models.length} model{models.length === 1 ? "" : "s"} found — select one…
+            </option>
+            {models.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        )}
+
+        {scanError && <p className="mt-1.5 text-xs text-loss">{scanError}</p>}
       </Field>
 
       <div className="flex items-center gap-3">

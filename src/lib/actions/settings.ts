@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/queries/settings";
-import { chatComplete } from "@/lib/ai/client";
+import { chatComplete, listModels } from "@/lib/ai/client";
 
 const SINGLETON_ID = "singleton";
 
@@ -30,6 +30,17 @@ export async function testAiConnection(): Promise<{ ok: true; text: string } | {
       { role: "user", content: "Reply with a single short sentence confirming you can hear this." },
     ]);
     return { ok: true, text };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Something went wrong" };
+  }
+}
+
+export async function listAiModels(): Promise<
+  { ok: true; models: string[] } | { ok: false; error: string }
+> {
+  try {
+    const models = await listModels();
+    return { ok: true, models };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Something went wrong" };
   }

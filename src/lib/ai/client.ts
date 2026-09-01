@@ -83,3 +83,49 @@ export async function chatComplete(
   }
   return content;
 }
+
+/**
+ * Lists models from the configured endpoint's OpenAI-compatible
+ * GET /models — lets Settings offer a dropdown of real model ids
+ * (Omniroute's own "provider/model" combo names included) instead of
+ * making the user guess and type one blind.
+ */
+export async function listModels(): Promise<string[]> {
+  const config = await getEffectiveAiConfig();
+  if (!config.baseUrl) {
+    throw new AiError("AI is not configured — set it up on the Settings page.");
+  }
+
+  const baseUrl = config.baseUrl.replace(/\/+$/, "");
+
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl}/models`, {
+      headers: config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {},
+      cache: "no-store",
+    });
+  } catch (err) {
+    throw new AiError(
+      `Couldn't reach the AI endpoint at ${baseUrl} — is it running? (${
+        err instanceof Error ? err.message : String(err)
+      })`,
+    );
+  }
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new AiError(`Listing models failed (HTTP ${res.status}): ${text.slice(0, 300)}`);
+  }
+
+  const json = await res.json().catch(() => null);
+  const data = json?.data;
+  if (!Array.isArray(data)) {
+    throw new AiError("Models response wasn't in the expected OpenAI-compatible list format.");
+  }
+
+  const ids = data
+    .map((m: unknown) => (m && typeof m === "object" && "id" in m ? (m as { id: unknown }).id : null))
+    .filter((id: unknown): id is string => typeof id === "string");
+
+  return Array.from(new Set(ids)).sort();
+}

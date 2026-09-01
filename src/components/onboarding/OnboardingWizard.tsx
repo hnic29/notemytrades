@@ -10,9 +10,15 @@ import {
   Upload,
   CheckCircle2,
   Rocket,
+  Search,
 } from "lucide-react";
 import { createAccount } from "@/lib/actions/accounts";
-import { updateAiSettings, testAiConnection, markOnboarded } from "@/lib/actions/settings";
+import {
+  updateAiSettings,
+  testAiConnection,
+  listAiModels,
+  markOnboarded,
+} from "@/lib/actions/settings";
 import { cn } from "@/lib/utils";
 
 const ASSET_TYPES = [
@@ -50,6 +56,9 @@ export function OnboardingWizard({
   const [aiModel, setAiModel] = useState(defaultAiModel);
   const [aiKey, setAiKey] = useState("");
   const [aiTestResult, setAiTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [aiModels, setAiModels] = useState<string[] | null>(null);
+  const [aiScanError, setAiScanError] = useState<string | null>(null);
+  const [isScanningAi, startScanningAi] = useTransition();
 
   const next = () => setStep((s) => Math.min(s + 1, STEPS.length - 1));
   const back = () => setStep((s) => Math.max(s - 1, 0));
@@ -80,6 +89,21 @@ export function OnboardingWizard({
       setAiTestResult(
         result.ok ? { ok: true, message: result.text } : { ok: false, message: result.error },
       );
+    });
+  };
+
+  const handleScanAi = () => {
+    startScanningAi(async () => {
+      setAiScanError(null);
+      setAiModels(null);
+      await updateAiSettings({ aiBaseUrl, aiApiKey: aiKey, aiModel });
+      const result = await listAiModels();
+      if (result.ok) {
+        setAiModels(result.models);
+        if (result.models.length === 0) setAiScanError("Endpoint responded but listed no models.");
+      } else {
+        setAiScanError(result.error);
+      }
     });
   };
 
@@ -250,12 +274,40 @@ export function OnboardingWizard({
                 />
               </Field>
               <Field label="Model" hint="Usually needs a provider/model prefix, e.g. openai/default.">
-                <input
-                  value={aiModel}
-                  onChange={(e) => setAiModel(e.target.value)}
-                  placeholder="openai/default"
-                  className={inputClass}
-                />
+                <div className="flex gap-2">
+                  <input
+                    value={aiModel}
+                    onChange={(e) => setAiModel(e.target.value)}
+                    placeholder="openai/default"
+                    className={inputClass}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleScanAi}
+                    disabled={isScanningAi || !aiBaseUrl.trim()}
+                    title={!aiBaseUrl.trim() ? "Set a Base URL first" : "Scan the endpoint for available models"}
+                    className="flex shrink-0 items-center gap-1.5 rounded-md border border-border-strong px-3 py-2 text-sm text-text-muted hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Search className="h-3.5 w-3.5" /> {isScanningAi ? "Scanning…" : "Scan"}
+                  </button>
+                </div>
+                {aiModels && aiModels.length > 0 && (
+                  <select
+                    value={aiModels.includes(aiModel) ? aiModel : ""}
+                    onChange={(e) => e.target.value && setAiModel(e.target.value)}
+                    className={`${inputClass} mt-2`}
+                  >
+                    <option value="" disabled>
+                      {aiModels.length} model{aiModels.length === 1 ? "" : "s"} found — select one…
+                    </option>
+                    {aiModels.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {aiScanError && <p className="mt-1.5 text-xs text-loss">{aiScanError}</p>}
               </Field>
               <Field label="API Key (optional)">
                 <input
