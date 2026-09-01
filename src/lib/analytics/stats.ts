@@ -120,6 +120,45 @@ export function computeDailyPnl(trades: StatsTrade[]): Map<string, number> {
   return map;
 }
 
+export type PnlBucket = { label: string; count: number; midpoint: number };
+
+/**
+ * Buckets closed trades' net P&L into a histogram for a win/loss
+ * distribution chart. Bucket width is chosen from the data's own range
+ * (capped to a sane number of buckets) rather than a fixed dollar size,
+ * so it stays readable for both a $50 scalper and a $50k swing account.
+ */
+export function computePnlDistribution(trades: StatsTrade[], bucketCount = 10): PnlBucket[] {
+  const values = trades.filter((t) => t.closedAt != null).map((t) => t.netPnl);
+  if (values.length === 0) return [];
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  if (min === max) {
+    return [{ label: formatBucketLabel(min, max), count: values.length, midpoint: min }];
+  }
+
+  const width = (max - min) / bucketCount;
+  const buckets: PnlBucket[] = Array.from({ length: bucketCount }, (_, i) => {
+    const lo = min + i * width;
+    const hi = i === bucketCount - 1 ? max : lo + width;
+    return { label: formatBucketLabel(lo, hi), count: 0, midpoint: (lo + hi) / 2 };
+  });
+
+  for (const v of values) {
+    let idx = Math.floor((v - min) / width);
+    if (idx >= bucketCount) idx = bucketCount - 1;
+    if (idx < 0) idx = 0;
+    buckets[idx].count++;
+  }
+  return buckets;
+}
+
+function formatBucketLabel(lo: number, hi: number): string {
+  const fmt = (n: number) => (Math.abs(n) >= 1000 ? `${Math.round(n / 100) / 10}k` : Math.round(n));
+  return `${fmt(lo)} to ${fmt(hi)}`;
+}
+
 /**
  * A simple, transparent 0-100 composite score — not a rigorous
  * statistical measure, just a rough at-a-glance blend of win rate,

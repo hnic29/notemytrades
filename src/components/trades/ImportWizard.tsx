@@ -6,7 +6,8 @@ import Papa from "papaparse";
 import { Upload } from "lucide-react";
 import { detectFormat, guessMapping, mapCsvRows, type ColumnMapping } from "@/lib/import/csv";
 import { bulkImportTrades } from "@/lib/actions/trades";
-import { formatCurrency } from "@/lib/format";
+import { computeSummaryStats } from "@/lib/analytics/stats";
+import { formatCurrency, formatPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 type AccountOption = { id: string; name: string; currency: string };
@@ -100,17 +101,49 @@ export function ImportWizard({ accounts }: { accounts: AccountOption[] }) {
   };
 
   if (importedCount != null) {
+    const importStats =
+      parsed &&
+      computeSummaryStats(
+        parsed.trades.map((t) => ({
+          netPnl: t.netPnl,
+          openedAt: new Date(t.openedAt),
+          closedAt: t.closedAt ? new Date(t.closedAt) : null,
+        })),
+      );
+
     return (
-      <div className="rounded-lg border border-profit/40 bg-profit-bg p-6 text-center">
-        <p className="text-lg font-medium text-profit">
+      <div className="rounded-lg border border-profit/40 bg-profit-bg p-6">
+        <p className="text-center text-lg font-medium text-profit">
           Imported {importedCount} trade{importedCount === 1 ? "" : "s"}
         </p>
-        <button
-          onClick={() => router.push("/trades")}
-          className="mt-4 rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:bg-accent-strong"
-        >
-          Go to Trade Log
-        </button>
+
+        {importStats && importStats.closedTrades > 0 && (
+          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <ImportStat
+              label="Net P&L"
+              value={formatCurrency(importStats.netPnl, account?.currency ?? "USD")}
+              tone={importStats.netPnl >= 0 ? "profit" : "loss"}
+            />
+            <ImportStat
+              label="Win Rate"
+              value={importStats.winRate != null ? formatPercent(importStats.winRate) : "—"}
+            />
+            <ImportStat
+              label="Profit Factor"
+              value={importStats.profitFactor != null ? importStats.profitFactor.toFixed(2) : "—"}
+            />
+            <ImportStat label="Wins / Losses" value={`${importStats.wins} / ${importStats.losses}`} />
+          </div>
+        )}
+
+        <div className="mt-6 text-center">
+          <button
+            onClick={() => router.push("/trades")}
+            className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:bg-accent-strong"
+          >
+            Go to Trade Log
+          </button>
+        </div>
       </div>
     );
   }
@@ -325,3 +358,29 @@ export function ImportWizard({ accounts }: { accounts: AccountOption[] }) {
 
 const selectClass =
   "w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-text outline-none focus:border-accent";
+
+function ImportStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "profit" | "loss";
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-surface p-3 text-center">
+      <div className="text-xs text-text-faint">{label}</div>
+      <div
+        className={cn(
+          "mt-1 text-lg font-semibold",
+          tone === "profit" && "text-profit",
+          tone === "loss" && "text-loss",
+          !tone && "text-text",
+        )}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}

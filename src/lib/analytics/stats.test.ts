@@ -3,6 +3,7 @@ import {
   computeDailyPnl,
   computeDrawdown,
   computeEquityCurve,
+  computePnlDistribution,
   computeSummaryStats,
   computeTradeScore,
   type StatsTrade,
@@ -103,6 +104,30 @@ describe("computeDailyPnl", () => {
     ]);
     expect(map.get("2026-01-01")).toBe(60);
     expect(map.get("2026-01-02")).toBe(50);
+  });
+});
+
+describe("computePnlDistribution", () => {
+  it("returns an empty array with no closed trades", () => {
+    expect(computePnlDistribution([trade(0, null)])).toEqual([]);
+  });
+
+  it("buckets every trade exactly once", () => {
+    const trades = [
+      trade(-500, "2026-01-01"),
+      trade(-100, "2026-01-02"),
+      trade(50, "2026-01-03"),
+      trade(300, "2026-01-04"),
+      trade(1000, "2026-01-05"),
+    ];
+    const buckets = computePnlDistribution(trades, 5);
+    expect(buckets.reduce((sum, b) => sum + b.count, 0)).toBe(5);
+  });
+
+  it("puts all trades in one bucket when every value is identical", () => {
+    const buckets = computePnlDistribution([trade(100, "2026-01-01"), trade(100, "2026-01-02")]);
+    expect(buckets).toHaveLength(1);
+    expect(buckets[0].count).toBe(2);
   });
 });
 
