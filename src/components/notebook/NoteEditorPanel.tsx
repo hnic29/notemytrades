@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import type { JSONContent } from "@tiptap/react";
+import type { Editor as TiptapEditor, JSONContent } from "@tiptap/react";
 import { Trash2, Link2, Link2Off, Printer, BookmarkPlus, Minus, Plus } from "lucide-react";
 import {
   deleteNote,
@@ -13,6 +13,7 @@ import {
 } from "@/lib/actions/notebook";
 import { Editor } from "./Editor";
 import { TradeLinkPicker } from "./TradeLinkPicker";
+import { AiWriteAssist } from "@/components/ai/AiWriteAssist";
 
 export type NoteData = {
   id: string;
@@ -33,6 +34,7 @@ export function NoteEditorPanel({ note }: { note: NoteData }) {
   const [shareSlug, setShareSlug] = useState(note.shareSlug);
   const [dirty, setDirty] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [editorInstance, setEditorInstance] = useState<TiptapEditor | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const save = () => {
@@ -174,9 +176,12 @@ export function NoteEditorPanel({ note }: { note: NoteData }) {
           className="mb-4 w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-text outline-none focus:border-accent"
         />
 
+        <AiWriteAssist editor={editorInstance} />
+
         <Editor
           content={content}
           fontSize={fontSize}
+          onReady={setEditorInstance}
           onChange={(json) => {
             setContent(json);
             setDirty(true);

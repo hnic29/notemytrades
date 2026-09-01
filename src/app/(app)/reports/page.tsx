@@ -9,6 +9,7 @@ import { byMonth, byWeek } from "@/lib/analytics/grouping";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { EquityCurveChart } from "@/components/dashboard/EquityCurveChart";
 import { CalendarHeatmap } from "@/components/dashboard/CalendarHeatmap";
+import { ReportInsight } from "@/components/ai/ReportInsight";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -42,6 +43,8 @@ export default async function ReportsOverviewPage(props: PageProps<"/reports">) 
         />
         <StatCard label="Closed Trades" value={String(stats.closedTrades)} />
       </div>
+
+      <ReportInsight />
 
       <div className="rounded-lg border border-border bg-surface p-4">
         <h2 className="mb-3 text-sm font-medium text-text-muted">Equity Curve</h2>

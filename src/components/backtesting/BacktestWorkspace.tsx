@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Link2, Link2Off, CheckCircle2, Trash2 } from "lucide-react";
 import { BacktestChart } from "./BacktestChart";
+import { BacktestSummary } from "@/components/ai/BacktestSummary";
 import { PlaybackControls } from "./PlaybackControls";
 import { TradeControls } from "./TradeControls";
 import {
@@ -218,6 +219,8 @@ export function BacktestWorkspace({
           </div>
         </>
       )}
+
+      <BacktestSummary sessionId={sessionId} />
 
       <div>
         <h2 className="mb-3 text-sm font-medium text-text-muted">

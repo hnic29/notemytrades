@@ -1,6 +1,6 @@
 "use client";
 
-import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
+import { useEditor, EditorContent, type Editor as TiptapEditor, type JSONContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
@@ -21,11 +21,13 @@ export function Editor({
   content,
   fontSize,
   onChange,
+  onReady,
   editable = true,
 }: {
   content: JSONContent;
   fontSize: number;
   onChange?: (json: JSONContent) => void;
+  onReady?: (editor: TiptapEditor) => void;
   editable?: boolean;
 }) {
   const editor = useEditor({
@@ -51,6 +53,10 @@ export function Editor({
       editor.setEditable(editable);
     }
   }, [editor, editable]);
+
+  useEffect(() => {
+    if (editor) onReady?.(editor);
+  }, [editor, onReady]);
 
   if (!editor) return null;
 
