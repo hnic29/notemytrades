@@ -46,7 +46,7 @@ export default async function SharedStrategyPage(props: PageProps<"/s/strategies
 
         <div className="rounded-lg border border-border bg-surface p-4">
           <h2 className="mb-3 text-sm font-medium text-text-muted">Rules</h2>
-          <RulesChecklist groups={rules} />
+          <RulesChecklist strategyId={strategy.id} groups={rules} />
         </div>
       </div>
     </div>

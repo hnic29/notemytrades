@@ -5,14 +5,19 @@ export async function listStrategies() {
     where: { archived: false },
     include: {
       _count: { select: { trades: true, missedTrades: true } },
-      trades: { select: { netPnl: true } },
+      trades: { select: { netPnl: true, closedAt: true } },
     },
     orderBy: { createdAt: "desc" },
   });
-  return strategies.map((s) => ({
-    ...s,
-    netPnl: s.trades.reduce((sum, t) => sum + t.netPnl, 0),
-  }));
+  return strategies.map((s) => {
+    const closed = s.trades.filter((t) => t.closedAt != null);
+    const wins = closed.filter((t) => t.netPnl > 0).length;
+    return {
+      ...s,
+      netPnl: s.trades.reduce((sum, t) => sum + t.netPnl, 0),
+      winRate: closed.length > 0 ? wins / closed.length : null,
+    };
+  });
 }
 
 export async function getStrategy(id: string) {

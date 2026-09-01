@@ -6,11 +6,16 @@ import { createStrategy, updateStrategy } from "@/lib/actions/strategies";
 import type { RuleGroup } from "@/lib/queries/strategies";
 import { RulesEditor } from "./RulesEditor";
 
+const STARTER_RULES: RuleGroup[] = [
+  { group: "Entry Rules", rules: [""] },
+  { group: "Exit Rules", rules: [""] },
+];
+
 export function StrategyForm({
   strategyId,
   initialName = "",
   initialDescription = "",
-  initialRules = [],
+  initialRules = STARTER_RULES,
 }: {
   strategyId?: string;
   initialName?: string;

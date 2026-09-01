@@ -2,7 +2,9 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getStrategy, parseRules } from "@/lib/queries/strategies";
 import { computeSummaryStats } from "@/lib/analytics/stats";
+import { computeDetailedStats } from "@/lib/analytics/detailed-stats";
 import { StatCard } from "@/components/dashboard/StatCard";
+import { RingStat } from "@/components/dashboard/RingStat";
 import { StrategyDetailActions } from "@/components/strategies/StrategyDetailActions";
 import { RulesChecklist } from "@/components/strategies/RulesChecklist";
 import { AttachTradePicker } from "@/components/strategies/AttachTradePicker";
@@ -16,6 +18,7 @@ export default async function StrategyDetailPage(props: PageProps<"/strategies/[
   if (!strategy) notFound();
 
   const stats = computeSummaryStats(strategy.trades);
+  const detailed = computeDetailedStats(strategy.trades);
   const rules = parseRules(strategy.rulesJson);
 
   return (
@@ -47,20 +50,34 @@ export default async function StrategyDetailPage(props: PageProps<"/strategies/[
           value={formatCurrency(stats.netPnl)}
           tone={stats.netPnl >= 0 ? "profit" : "loss"}
         />
-        <StatCard
-          label="Win Rate"
-          value={stats.winRate != null ? formatPercent(stats.winRate) : "—"}
-        />
-        <StatCard
-          label="Profit Factor"
-          value={stats.profitFactor != null ? stats.profitFactor.toFixed(2) : "—"}
-        />
+        <div className="rounded-lg border border-border bg-surface p-4">
+          <RingStat
+            label="Win Rate"
+            value={stats.winRate}
+            displayValue={stats.winRate != null ? formatPercent(stats.winRate, 0) : "—"}
+            tone="profit"
+          />
+        </div>
+        <div className="rounded-lg border border-border bg-surface p-4">
+          <RingStat
+            label="Profit Factor"
+            value={stats.profitFactor != null ? Math.min(stats.profitFactor / 3, 1) : null}
+            displayValue={stats.profitFactor != null ? stats.profitFactor.toFixed(2) : "—"}
+            tone="accent"
+          />
+        </div>
         <StatCard label="Trades" value={String(stats.closedTrades)} />
+      </div>
+
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <StatCard label="Expectancy" value={formatCurrency(detailed.expectancy)} tone={detailed.expectancy >= 0 ? "profit" : "loss"} />
+        <StatCard label="Avg Winner" value={formatCurrency(stats.avgWin)} tone="profit" />
+        <StatCard label="Avg Loser" value={formatCurrency(-stats.avgLoss)} tone="loss" />
       </div>
 
       <div className="mb-6 rounded-lg border border-border bg-surface p-4">
         <h2 className="mb-3 text-sm font-medium text-text-muted">Rules</h2>
-        <RulesChecklist groups={rules} />
+        <RulesChecklist strategyId={strategy.id} groups={rules} />
       </div>
 
       <div className="mb-6 rounded-lg border border-border bg-surface p-4">

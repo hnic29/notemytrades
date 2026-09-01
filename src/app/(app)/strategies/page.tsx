@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { listStrategies } from "@/lib/queries/strategies";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, formatPercent } from "@/lib/format";
+import { RingStat } from "@/components/dashboard/RingStat";
 import { cn } from "@/lib/utils";
 
 export default async function StrategiesPage() {
@@ -46,6 +47,16 @@ export default async function StrategiesPage() {
               </div>
               {s.description && (
                 <p className="mb-3 line-clamp-2 text-sm text-text-muted">{s.description}</p>
+              )}
+              {s._count.trades > 0 && (
+                <div className="mb-3">
+                  <RingStat
+                    label="Win Rate"
+                    value={s.winRate}
+                    displayValue={s.winRate != null ? formatPercent(s.winRate, 0) : "—"}
+                    tone="profit"
+                  />
+                </div>
               )}
               <div className="flex items-center gap-3 text-xs text-text-faint">
                 <span>{s._count.trades} trades</span>
