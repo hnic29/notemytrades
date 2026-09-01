@@ -29,8 +29,19 @@ export async function createSession(input: {
   return session;
 }
 
+/**
+ * Trade.backtestSessionId has no explicit onDelete, so Prisma defaults
+ * an optional relation to SetNull — deleting the session alone would
+ * silently *detach* its trades (backtestSessionId -> null) rather than
+ * delete them, leaving orphaned backtest trades behind despite the
+ * confirm dialog's "and all its trades" promise. Delete the trades
+ * first, in the same transaction.
+ */
 export async function deleteSession(id: string) {
-  await prisma.backtestSession.delete({ where: { id } });
+  await prisma.$transaction([
+    prisma.trade.deleteMany({ where: { backtestSessionId: id } }),
+    prisma.backtestSession.delete({ where: { id } }),
+  ]);
   revalidatePath("/backtesting");
 }
 
