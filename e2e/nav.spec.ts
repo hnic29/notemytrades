@@ -18,17 +18,21 @@ test("home redirects to dashboard and sidebar nav works", async ({ page }) => {
   ];
 
   for (const [href, heading] of stops) {
-    await page.locator(`a[href="${href}"]`).click();
+    // Scoped to the sidebar <aside>: some pages (e.g. Reports) render
+    // their own in-page nav with a link sharing the same href (the
+    // Overview report tab is href="/reports" too), which would
+    // otherwise make these locators ambiguous.
+    await page.locator(`aside a[href="${href}"]`).click();
     await expect(page).toHaveURL(new RegExp(href.replace("/", "\\/") + "$"));
     await expect(
       page.getByRole("heading", { name: heading }),
     ).toBeVisible();
-    await expect(page.locator(`a[href="${href}"]`)).toHaveClass(/bg-surface-2/);
+    await expect(page.locator(`aside a[href="${href}"]`)).toHaveClass(/bg-surface-2/);
   }
 
   // Notebook is a dense two-panel workspace with no page-level <h1> (its
   // own inner sidebar already labels it), so check it separately.
-  await page.locator('a[href="/notebook"]').click();
+  await page.locator('aside a[href="/notebook"]').click();
   await expect(page).toHaveURL(/\/notebook$/);
   await expect(page.getByText("Notebook", { exact: true }).last()).toBeVisible();
 
