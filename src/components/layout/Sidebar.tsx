@@ -1,29 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
-import { Settings } from "lucide-react";
-import { NAV_ITEMS } from "@/lib/nav";
-import { cn } from "@/lib/utils";
+import { useActiveNav } from "./useActiveNav";
+import { NavLinks } from "./NavLinks";
 
 export function Sidebar() {
-  const pathname = usePathname();
-  // Next's router occasionally commits the new route's content a tick
-  // before this shared-layout component re-renders with the new
-  // pathname (observed on 16.3.4), which briefly highlights the old nav
-  // item. Set the highlight synchronously on click and let it clear
-  // itself once `pathname` actually catches up, so it can never get
-  // stuck out of sync with real navigation state.
-  const [optimisticHref, setOptimisticHref] = useState<string | null>(null);
-  useEffect(() => {
-    // Clearing the optimistic override once the real pathname catches up
-    // is the point of this workaround (see comment above) — there's no
-    // click/event to hang this off of, it's reacting to router state.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setOptimisticHref(null);
-  }, [pathname]);
-  const activePath = optimisticHref ?? pathname;
+  const { isActive, setOptimisticHref } = useActiveNav();
 
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-surface md:flex">
@@ -40,56 +22,7 @@ export function Sidebar() {
         </span>
       </Link>
 
-      <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
-        {NAV_ITEMS.map((item) => {
-          const active =
-            activePath === item.href || activePath.startsWith(item.href + "/");
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={() => setOptimisticHref(item.href)}
-              className={cn(
-                "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
-                active
-                  ? "bg-surface-2 text-text"
-                  : "text-text-muted hover:bg-surface-2 hover:text-text",
-              )}
-            >
-              <Icon
-                className={cn(
-                  "h-4 w-4 shrink-0",
-                  active ? "text-accent" : "text-text-faint",
-                )}
-              />
-              <span className="truncate">{item.label}</span>
-            </Link>
-          );
-        })}
-      </nav>
-
-      <div className="border-t border-border p-2">
-        <Link
-          href="/settings"
-          onClick={() => setOptimisticHref("/settings")}
-          className={cn(
-            "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
-            activePath === "/settings" || activePath.startsWith("/settings/")
-              ? "bg-surface-2 text-text"
-              : "text-text-muted hover:bg-surface-2 hover:text-text",
-          )}
-        >
-          <Settings
-            className={cn(
-              "h-4 w-4 shrink-0",
-              activePath === "/settings" ? "text-accent" : "text-text-faint",
-            )}
-          />
-          Settings
-        </Link>
-        <p className="px-3 pt-1 text-xs text-text-faint">Self-hosted · no subscription</p>
-      </div>
+      <NavLinks isActive={isActive} onNavigate={setOptimisticHref} />
     </aside>
   );
 }

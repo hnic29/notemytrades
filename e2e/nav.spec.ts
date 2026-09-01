@@ -9,7 +9,10 @@ test("home redirects to dashboard and sidebar nav works", async ({ page }) => {
 
   await page.goto("/");
   await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(page.getByText("Note My Trades")).toBeVisible();
+  // Scoped to the sidebar <aside>: the mobile nav's top bar renders the
+  // same "Note My Trades" text (hidden via CSS at desktop widths, but
+  // still present in the DOM), which would otherwise make this ambiguous.
+  await expect(page.locator("aside").getByText("Note My Trades")).toBeVisible();
 
   const stops: [string, string][] = [
     ["/trades", "Trade Log"],
