@@ -1,33 +1,52 @@
+import { prisma } from "@/lib/prisma";
+
 export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
-/** True only when AI_BASE_URL is set — every AI feature in the app
- * checks this and renders a "not configured" state instead of a
- * broken button when it's false, rather than assuming Omniroute (or
- * whatever's behind AI_BASE_URL) is always reachable. */
-export function isAiConfigured(): boolean {
-  return Boolean(process.env.AI_BASE_URL?.trim());
+type EffectiveAiConfig = { baseUrl: string | null; apiKey: string | null; model: string };
+
+/**
+ * Settings saved in the app's Settings page (stored in the DB) take
+ * precedence over the .env defaults, so the UI actually takes effect
+ * without a server restart — env vars are just the first-boot
+ * fallback before anyone has visited Settings.
+ */
+async function getEffectiveAiConfig(): Promise<EffectiveAiConfig> {
+  const settings = await prisma.appSettings.findUnique({ where: { id: "singleton" } });
+  return {
+    baseUrl: settings?.aiBaseUrl?.trim() || process.env.AI_BASE_URL?.trim() || null,
+    apiKey: settings?.aiApiKey?.trim() || process.env.AI_API_KEY?.trim() || null,
+    model: settings?.aiModel?.trim() || process.env.AI_MODEL?.trim() || "default",
+  };
+}
+
+/** True only when a base URL is configured (Settings page or
+ * AI_BASE_URL) — every AI feature checks this and renders a "not
+ * configured" state instead of a broken button when it's false. */
+export async function isAiConfigured(): Promise<boolean> {
+  const { baseUrl } = await getEffectiveAiConfig();
+  return Boolean(baseUrl);
 }
 
 export class AiError extends Error {}
 
 /**
  * Thin client for an OpenAI-compatible /chat/completions endpoint
- * (Omniroute, or anything else that speaks the same protocol). Never
- * throws for "not configured" silently — callers must check
- * isAiConfigured() first; this throws AiError for anything else
- * (unreachable, non-2xx, malformed response) so UI can show a specific
- * message instead of a generic crash.
+ * (Omniroute, or anything else that speaks the same protocol). Throws
+ * AiError for every expected failure mode (not configured, unreachable,
+ * non-2xx, malformed response) — callers should catch this specific
+ * type and show its message, not let it propagate (Next.js redacts
+ * thrown Server Action error messages in production builds).
  */
 export async function chatComplete(
   messages: ChatMessage[],
   opts?: { temperature?: number },
 ): Promise<string> {
-  if (!isAiConfigured()) {
-    throw new AiError("AI is not configured — set AI_BASE_URL in .env.");
+  const config = await getEffectiveAiConfig();
+  if (!config.baseUrl) {
+    throw new AiError("AI is not configured — set it up on the Settings page.");
   }
 
-  const baseUrl = process.env.AI_BASE_URL!.replace(/\/+$/, "");
-  const apiKey = process.env.AI_API_KEY?.trim();
+  const baseUrl = config.baseUrl.replace(/\/+$/, "");
 
   let res: Response;
   try {
@@ -35,10 +54,10 @@ export async function chatComplete(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
       },
       body: JSON.stringify({
-        model: process.env.AI_MODEL || "default",
+        model: config.model,
         messages,
         temperature: opts?.temperature ?? 0.4,
       }),
@@ -46,7 +65,7 @@ export async function chatComplete(
     });
   } catch (err) {
     throw new AiError(
-      `Couldn't reach the AI endpoint at ${baseUrl} — is Omniroute running? (${
+      `Couldn't reach the AI endpoint at ${baseUrl} — is it running? (${
         err instanceof Error ? err.message : String(err)
       })`,
     );
@@ -60,7 +79,7 @@ export async function chatComplete(
   const json = await res.json().catch(() => null);
   const content = json?.choices?.[0]?.message?.content;
   if (typeof content !== "string") {
-    throw new AiError("AI response didn't include a message — check AI_MODEL is a valid model name.");
+    throw new AiError("AI response didn't include a message — check the model name in Settings.");
   }
   return content;
 }

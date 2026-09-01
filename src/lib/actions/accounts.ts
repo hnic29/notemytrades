@@ -10,6 +10,12 @@ export async function listAccounts() {
   });
 }
 
+/** Every account, including archived ones — for the Settings page,
+ * where archiving/unarchiving needs to actually see what's hidden. */
+export async function listAllAccounts() {
+  return prisma.account.findMany({ orderBy: { createdAt: "asc" } });
+}
+
 export async function getOrCreateDefaultAccount() {
   const existing = await prisma.account.findFirst({
     where: { archived: false },
@@ -53,4 +59,42 @@ export async function createAccount(input: {
   });
   revalidatePath("/trades");
   return account;
+}
+
+export async function updateAccount(
+  id: string,
+  input: {
+    name: string;
+    broker?: string;
+    assetType?: string;
+    currency?: string;
+    startingBalance?: number;
+  },
+) {
+  const account = await prisma.account.update({
+    where: { id },
+    data: {
+      name: input.name,
+      broker: input.broker || null,
+      assetType: input.assetType || "mixed",
+      currency: input.currency || "USD",
+      startingBalance: input.startingBalance ?? 0,
+    },
+  });
+  revalidatePath("/settings");
+  revalidatePath("/trades");
+  revalidatePath("/dashboard");
+  return account;
+}
+
+export async function setAccountArchived(id: string, archived: boolean) {
+  await prisma.account.update({ where: { id }, data: { archived } });
+  revalidatePath("/settings");
+  revalidatePath("/trades");
+  revalidatePath("/dashboard");
+}
+
+export async function deleteAccount(id: string) {
+  await prisma.account.delete({ where: { id } });
+  revalidatePath("/settings");
 }

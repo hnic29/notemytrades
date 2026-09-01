@@ -27,7 +27,7 @@ async function safely(run: () => Promise<string>): Promise<AiResult> {
 }
 
 export async function checkAiStatus() {
-  return { configured: isAiConfigured() };
+  return { configured: await isAiConfigured() };
 }
 
 export async function askTradingAssistant(

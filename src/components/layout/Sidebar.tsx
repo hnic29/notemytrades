@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Settings } from "lucide-react";
 import { NAV_ITEMS } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
@@ -22,14 +23,18 @@ export function Sidebar() {
 
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-surface md:flex">
-      <div className="flex h-14 items-center gap-2 border-b border-border px-4">
+      <Link
+        href="/dashboard"
+        onClick={() => setOptimisticHref("/dashboard")}
+        className="flex h-14 items-center gap-2 border-b border-border px-4 hover:bg-surface-2"
+      >
         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-accent text-sm font-bold text-accent-fg">
           N
         </div>
         <span className="text-sm font-semibold tracking-tight text-text">
           Note My Trades
         </span>
-      </div>
+      </Link>
 
       <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
         {NAV_ITEMS.map((item) => {
@@ -60,8 +65,26 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="border-t border-border p-3 text-xs text-text-faint">
-        Self-hosted · no subscription
+      <div className="border-t border-border p-2">
+        <Link
+          href="/settings"
+          onClick={() => setOptimisticHref("/settings")}
+          className={cn(
+            "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
+            activePath === "/settings" || activePath.startsWith("/settings/")
+              ? "bg-surface-2 text-text"
+              : "text-text-muted hover:bg-surface-2 hover:text-text",
+          )}
+        >
+          <Settings
+            className={cn(
+              "h-4 w-4 shrink-0",
+              activePath === "/settings" ? "text-accent" : "text-text-faint",
+            )}
+          />
+          Settings
+        </Link>
+        <p className="px-3 pt-1 text-xs text-text-faint">Self-hosted · no subscription</p>
       </div>
     </aside>
   );

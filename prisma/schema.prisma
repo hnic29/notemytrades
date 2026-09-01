@@ -264,6 +264,18 @@ model PropPayout {
 
 // ── Backtesting & Replay ────────────────────────────────────────────
 
+// Single-row global settings — always queried/updated by the fixed
+// id "singleton" rather than modeled as a list, since this app has
+// exactly one of these by design (single-user, single install).
+model AppSettings {
+  id          String    @id @default("singleton")
+  onboardedAt DateTime?
+  aiBaseUrl   String?
+  aiApiKey    String?
+  aiModel     String?
+  updatedAt   DateTime  @updatedAt
+}
+
 model BacktestSession {
   id            String   @id @default(cuid())
   accountId     String?
