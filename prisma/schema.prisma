@@ -1,0 +1,281 @@
+// Note My Trades — data model
+// Single-user app: no user/tenant scoping anywhere by design.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ── Accounts & Trades ──────────────────────────────────────────────
+
+model Account {
+  id              String   @id @default(cuid())
+  name            String
+  broker          String?
+  assetType       String? // "stock" | "futures" | "forex" | "crypto" | "option" | "mixed"
+  currency        String   @default("USD")
+  startingBalance Float    @default(0)
+  isPropFirm      Boolean  @default(false)
+  archived        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  trades           Trade[]
+  propAccount      PropAccount?
+  backtestSessions BacktestSession[]
+}
+
+model Trade {
+  id            String    @id @default(cuid())
+  accountId     String
+  account       Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  symbol        String
+  assetType     String // "stock" | "futures" | "forex" | "crypto" | "option"
+  side          String // "long" | "short"
+  status        String    @default("closed") // "open" | "closed"
+  openedAt      DateTime
+  closedAt      DateTime?
+  quantity      Float
+  avgEntryPrice Float
+  avgExitPrice  Float?
+  grossPnl      Float     @default(0)
+  fees          Float     @default(0)
+  commissions   Float     @default(0)
+  netPnl        Float     @default(0)
+  netRoi        Float?
+  stopLoss      Float?
+  profitTarget  Float?
+  quickNote     String?
+  source        String? // "manual" | "csv:generic" | "csv:tradingview" | "csv:thinkorswim" | "csv:mt4" | ...
+  isBacktest    Boolean   @default(false)
+  shareSlug     String?   @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  executions Execution[]
+  tags       TradeTag[]
+
+  strategyId String?
+  strategy   Strategy? @relation(fields: [strategyId], references: [id])
+
+  noteId String? @unique
+  note   Note?   @relation(fields: [noteId], references: [id])
+
+  backtestSessionId String?
+  backtestSession   BacktestSession? @relation(fields: [backtestSessionId], references: [id])
+
+  @@index([accountId])
+  @@index([symbol])
+  @@index([openedAt])
+}
+
+model Execution {
+  id        String   @id @default(cuid())
+  tradeId   String
+  trade     Trade    @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  side      String // "buy" | "sell"
+  quantity  Float
+  price     Float
+  timestamp DateTime
+  isEntry   Boolean
+
+  @@index([tradeId])
+}
+
+model Tag {
+  id    String  @id @default(cuid())
+  name  String  @unique
+  color String?
+
+  trades TradeTag[]
+  notes  NoteTag[]
+}
+
+model TradeTag {
+  tradeId String
+  tagId   String
+  trade   Trade  @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  tag     Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([tradeId, tagId])
+}
+
+// ── Strategies / Playbooks ─────────────────────────────────────────
+
+model Strategy {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  rulesJson   String? // JSON: [{ group: string, rules: string[] }]
+  shareSlug   String?  @unique
+  archived    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  trades       Trade[]
+  missedTrades MissedTrade[]
+}
+
+model MissedTrade {
+  id         String   @id @default(cuid())
+  strategyId String
+  strategy   Strategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  symbol     String
+  notes      String?
+  occurredAt DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([strategyId])
+}
+
+// ── Notebook ────────────────────────────────────────────────────────
+
+model Folder {
+  id        String   @id @default(cuid())
+  name      String
+  parentId  String?
+  parent    Folder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Folder[] @relation("FolderTree")
+  notes     Note[]
+  createdAt DateTime @default(now())
+}
+
+model Note {
+  id          String   @id @default(cuid())
+  title       String
+  contentJson String // Tiptap JSON document, stringified
+  folderId    String?
+  folder      Folder?  @relation(fields: [folderId], references: [id])
+  fontSize    Int      @default(16)
+  shareSlug   String?  @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tags  NoteTag[]
+  trade Trade?
+}
+
+model NoteTag {
+  noteId String
+  tagId  String
+  note   Note   @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([noteId, tagId])
+}
+
+model NoteTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  contentJson String
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model DailyNote {
+  id          String   @id @default(cuid())
+  date        DateTime @unique
+  contentJson String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ── Dashboard ───────────────────────────────────────────────────────
+
+model Widget {
+  id       String  @id @default(cuid())
+  type     String // "netPnl" | "winRate" | "profitFactor" | "avgWinLoss" | "streak" | "drawdown" | "calendar" | "tradeScore" | ...
+  position Int
+  size     String  @default("md") // "sm" | "md" | "lg"
+  config   String? // JSON
+}
+
+// ── Progress Tracker ────────────────────────────────────────────────
+
+model ProgressRule {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  frequency   String // "perTrade" | "daily"
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  states ProgressState[]
+}
+
+model ProgressState {
+  id      String       @id @default(cuid())
+  ruleId  String
+  rule    ProgressRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  date    DateTime
+  passed  Boolean
+  tradeId String?
+
+  @@index([ruleId, date])
+}
+
+// ── Prop Accounts (PropFirm Sync minus live sync) ──────────────────
+
+model PropAccount {
+  id               String    @id @default(cuid())
+  accountId        String    @unique
+  account          Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  firmName         String
+  challengeType    String? // "1-step" | "2-step" | "instant" | "funded"
+  phase            String    @default("challenge") // "challenge" | "verification" | "funded"
+  profitTarget     Float?
+  maxDailyLoss     Float?
+  maxTotalDrawdown Float?
+  accountSize      Float
+  startDate        DateTime?
+
+  transactions PropTransaction[]
+  payouts      PropPayout[]
+}
+
+model PropTransaction {
+  id            String      @id @default(cuid())
+  propAccountId String
+  propAccount   PropAccount @relation(fields: [propAccountId], references: [id], onDelete: Cascade)
+  type          String // "fee" | "deposit" | "adjustment" | "reset"
+  amount        Float
+  occurredAt    DateTime
+  notes         String?
+
+  @@index([propAccountId])
+}
+
+model PropPayout {
+  id            String      @id @default(cuid())
+  propAccountId String
+  propAccount   PropAccount @relation(fields: [propAccountId], references: [id], onDelete: Cascade)
+  amount        Float
+  requestedAt   DateTime
+  paidAt        DateTime?
+  status        String      @default("pending") // "pending" | "paid" | "denied"
+
+  @@index([propAccountId])
+}
+
+// ── Backtesting & Replay ────────────────────────────────────────────
+
+model BacktestSession {
+  id            String   @id @default(cuid())
+  accountId     String?
+  account       Account? @relation(fields: [accountId], references: [id])
+  name          String
+  symbol        String
+  timeframe     String
+  startDate     DateTime
+  endDate       DateTime
+  playbackSpeed Float    @default(1)
+  status        String   @default("in_progress") // "in_progress" | "completed"
+  shareSlug     String?  @unique
+  createdAt     DateTime @default(now())
+
+  trades Trade[]
+}
