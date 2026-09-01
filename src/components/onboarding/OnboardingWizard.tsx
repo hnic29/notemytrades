@@ -249,11 +249,11 @@ export function OnboardingWizard({
                   className={inputClass}
                 />
               </Field>
-              <Field label="Model">
+              <Field label="Model" hint="Usually needs a provider/model prefix, e.g. openai/default.">
                 <input
                   value={aiModel}
                   onChange={(e) => setAiModel(e.target.value)}
-                  placeholder="default"
+                  placeholder="openai/default"
                   className={inputClass}
                 />
               </Field>

@@ -61,11 +61,14 @@ export function AiSettingsForm({
           className={inputClass}
         />
       </Field>
-      <Field label="Model" hint="The exact model name Omniroute should route to.">
+      <Field
+        label="Model"
+        hint="Most gateways (including Omniroute) need a provider/model prefix, not just a bare name — e.g. openai/default or openai/gpt-4o-mini, matching however it's configured."
+      >
         <input
           value={model}
           onChange={(e) => setModel(e.target.value)}
-          placeholder="default"
+          placeholder="openai/default"
           className={inputClass}
         />
       </Field>
