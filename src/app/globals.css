@@ -66,3 +66,43 @@ body {
 * {
   scrollbar-color: var(--color-surface-3) var(--color-surface);
 }
+
+.prose-notebook {
+  color: var(--color-text);
+  line-height: 1.65;
+}
+.prose-notebook p {
+  margin: 0.5em 0;
+}
+.prose-notebook h2 {
+  font-size: 1.25em;
+  font-weight: 600;
+  margin: 1em 0 0.5em;
+}
+.prose-notebook ul,
+.prose-notebook ol {
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+.prose-notebook ul {
+  list-style: disc;
+}
+.prose-notebook ol {
+  list-style: decimal;
+}
+.prose-notebook blockquote {
+  border-left: 3px solid var(--color-border-strong);
+  padding-left: 1em;
+  color: var(--color-text-muted);
+  margin: 0.75em 0;
+}
+.prose-notebook a {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+.prose-notebook code {
+  background: var(--color-surface-2);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  font-size: 0.9em;
+}

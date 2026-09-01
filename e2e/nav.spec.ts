@@ -13,8 +13,8 @@ test("home redirects to dashboard and sidebar nav works", async ({ page }) => {
 
   const stops: [string, string][] = [
     ["/trades", "Trade Log"],
-    ["/notebook", "Notebook"],
     ["/reports", "Reports & Filters"],
+    ["/strategies", "Strategies"],
   ];
 
   for (const [href, heading] of stops) {
@@ -25,6 +25,12 @@ test("home redirects to dashboard and sidebar nav works", async ({ page }) => {
     ).toBeVisible();
     await expect(page.locator(`a[href="${href}"]`)).toHaveClass(/bg-surface-2/);
   }
+
+  // Notebook is a dense two-panel workspace with no page-level <h1> (its
+  // own inner sidebar already labels it), so check it separately.
+  await page.locator('a[href="/notebook"]').click();
+  await expect(page).toHaveURL(/\/notebook$/);
+  await expect(page.getByText("Notebook", { exact: true }).last()).toBeVisible();
 
   expect(errors).toEqual([]);
 });
