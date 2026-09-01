@@ -8,6 +8,8 @@ import { EquityCurveChart } from "./EquityCurveChart";
 import { DrawdownChart } from "./DrawdownChart";
 import { CalendarHeatmap } from "./CalendarHeatmap";
 import { TradeScoreGauge } from "./TradeScoreGauge";
+import { RingStat } from "./RingStat";
+import { RecentTradesWidget, type RecentTrade } from "./RecentTradesWidget";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import type { EquityPoint, SummaryStats } from "@/lib/analytics/stats";
 import Link from "next/link";
@@ -15,6 +17,7 @@ import Link from "next/link";
 type WidgetKey =
   | "stats"
   | "tradeScore"
+  | "recentTrades"
   | "equityCurve"
   | "drawdown"
   | "calendar"
@@ -23,6 +26,7 @@ type WidgetKey =
 const WIDGET_LABELS: Record<WidgetKey, string> = {
   stats: "Summary Stats",
   tradeScore: "Trade Score",
+  recentTrades: "Recent Trades",
   equityCurve: "Equity Curve",
   drawdown: "Drawdown",
   calendar: "Calendar",
@@ -32,12 +36,13 @@ const WIDGET_LABELS: Record<WidgetKey, string> = {
 const DEFAULT_ORDER: WidgetKey[] = [
   "stats",
   "tradeScore",
+  "recentTrades",
   "equityCurve",
   "drawdown",
   "calendar",
   "progressTracker",
 ];
-const STORAGE_KEY = "nmt.dashboard.widgets.v2";
+const STORAGE_KEY = "nmt.dashboard.widgets.v3";
 
 function loadPrefs(): { order: WidgetKey[]; hidden: WidgetKey[] } {
   if (typeof window === "undefined") return { order: DEFAULT_ORDER, hidden: [] };
@@ -54,19 +59,25 @@ function loadPrefs(): { order: WidgetKey[]; hidden: WidgetKey[] } {
 export function DashboardClient({
   stats,
   tradeScore,
+  dayStreak,
   equityCurve,
   drawdownSeries,
   dailyPnl,
   startingBalance,
   progress,
+  recentTrades,
+  openPositions,
 }: {
   stats: SummaryStats;
   tradeScore: number | null;
+  dayStreak: number;
   equityCurve: EquityPoint[];
   drawdownSeries: { date: string; drawdown: number }[];
   dailyPnl: Record<string, number>;
   startingBalance: number;
   progress: { streak: number; ruleCount: number; passedToday: number } | null;
+  recentTrades: RecentTrade[];
+  openPositions: RecentTrade[];
 }) {
   const [prefs, setPrefs] = useState(loadPrefs);
   const [showMenu, setShowMenu] = useState(false);
@@ -112,23 +123,57 @@ export function DashboardClient({
           value={money(stats.netPnl)}
           tone={stats.netPnl >= 0 ? "profit" : "loss"}
         />
-        <StatCard
-          label="Win Rate"
-          value={stats.winRate != null ? formatPercent(stats.winRate) : "—"}
-          sub={`${stats.wins}W / ${stats.losses}L`}
-        />
-        <StatCard
-          label="Profit Factor"
-          value={stats.profitFactor != null ? stats.profitFactor.toFixed(2) : "—"}
-        />
+        <div className="rounded-lg border border-border bg-surface p-4">
+          <RingStat
+            label="Win Rate"
+            value={stats.winRate}
+            displayValue={stats.winRate != null ? formatPercent(stats.winRate, 0) : "—"}
+            tone="profit"
+          />
+        </div>
+        <div className="rounded-lg border border-border bg-surface p-4">
+          <RingStat
+            label="Profit Factor"
+            value={stats.profitFactor != null ? Math.min(stats.profitFactor / 3, 1) : null}
+            displayValue={stats.profitFactor != null ? stats.profitFactor.toFixed(2) : "—"}
+            tone="accent"
+          />
+        </div>
         <StatCard label="Avg Win" value={money(stats.avgWin)} tone="profit" />
         <StatCard label="Avg Loss" value={money(-stats.avgLoss)} tone="loss" />
-        <StatCard
-          label="Current Streak"
-          value={stats.currentStreak === 0 ? "—" : String(Math.abs(stats.currentStreak))}
-          tone={stats.currentStreak > 0 ? "profit" : stats.currentStreak < 0 ? "loss" : "neutral"}
-          sub={stats.currentStreak > 0 ? "wins" : stats.currentStreak < 0 ? "losses" : undefined}
-        />
+        <div className="rounded-lg border border-border bg-surface p-4">
+          <div className="text-xs text-text-faint">Current Streak</div>
+          <div className="mt-2 flex items-center gap-4">
+            <div>
+              <div
+                className={cn(
+                  "text-xl font-semibold",
+                  dayStreak > 0 ? "text-profit" : dayStreak < 0 ? "text-loss" : "text-text",
+                )}
+              >
+                {dayStreak === 0 ? "—" : Math.abs(dayStreak)}
+              </div>
+              <div className="text-[10px] text-text-faint">
+                {dayStreak > 0 ? "days" : dayStreak < 0 ? "days" : "days"}
+              </div>
+            </div>
+            <div>
+              <div
+                className={cn(
+                  "text-xl font-semibold",
+                  stats.currentStreak > 0
+                    ? "text-profit"
+                    : stats.currentStreak < 0
+                      ? "text-loss"
+                      : "text-text",
+                )}
+              >
+                {stats.currentStreak === 0 ? "—" : Math.abs(stats.currentStreak)}
+              </div>
+              <div className="text-[10px] text-text-faint">trades</div>
+            </div>
+          </div>
+        </div>
       </div>
     ),
     tradeScore: (
@@ -136,6 +181,7 @@ export function DashboardClient({
         <TradeScoreGauge score={tradeScore} />
       </div>
     ),
+    recentTrades: <RecentTradesWidget recent={recentTrades} open={openPositions} />,
     equityCurve: <EquityCurveChart data={equityCurve} />,
     drawdown: <DrawdownChart data={drawdownSeries} />,
     calendar: <CalendarHeatmap dailyPnl={dailyPnl} />,

@@ -5,11 +5,13 @@ import {
   computeEquityCurve,
   computeSummaryStats,
 } from "@/lib/analytics/stats";
-import { byMonth, byWeek } from "@/lib/analytics/grouping";
+import { byMonth, byWeek, computeRiskMetrics } from "@/lib/analytics/grouping";
+import { computeDetailedStats } from "@/lib/analytics/detailed-stats";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { EquityCurveChart } from "@/components/dashboard/EquityCurveChart";
 import { CalendarHeatmap } from "@/components/dashboard/CalendarHeatmap";
 import { ReportInsight } from "@/components/ai/ReportInsight";
+import { YourStatsTable } from "@/components/reports/YourStatsTable";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +21,8 @@ export default async function ReportsOverviewPage(props: PageProps<"/reports">) 
   const trades = await fetchReportTrades(filters);
 
   const stats = computeSummaryStats(trades);
+  const detailed = computeDetailedStats(trades);
+  const risk = computeRiskMetrics(trades);
   const equityCurve = computeEquityCurve(trades);
   const dailyPnl = Object.fromEntries(computeDailyPnl(trades));
   const monthly = byMonth(trades);
@@ -45,6 +49,8 @@ export default async function ReportsOverviewPage(props: PageProps<"/reports">) 
       </div>
 
       <ReportInsight />
+
+      <YourStatsTable stats={stats} detailed={detailed} risk={risk} />
 
       <div className="rounded-lg border border-border bg-surface p-4">
         <h2 className="mb-3 text-sm font-medium text-text-muted">Equity Curve</h2>

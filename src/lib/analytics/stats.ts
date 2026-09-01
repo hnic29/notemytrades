@@ -120,6 +120,27 @@ export function computeDailyPnl(trades: StatsTrade[]): Map<string, number> {
   return map;
 }
 
+/**
+ * Consecutive winning/losing *days* ending at the most recent trading
+ * day — distinct from SummaryStats.currentStreak, which counts
+ * consecutive individual trades. A trader can lose the last trade of
+ * an otherwise green day; these tell different stories.
+ */
+export function computeDayStreak(dailyPnl: Map<string, number>): number {
+  const days = Array.from(dailyPnl.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+  let streak = 0;
+  for (const [, value] of days) {
+    if (value > 0) {
+      if (streak < 0) break;
+      streak++;
+    } else if (value < 0) {
+      if (streak > 0) break;
+      streak--;
+    } else break;
+  }
+  return streak;
+}
+
 export type PnlBucket = { label: string; count: number; midpoint: number };
 
 /**

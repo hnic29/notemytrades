@@ -213,6 +213,28 @@ export async function transferTrade(id: string, newAccountId: string) {
   revalidatePath("/trades");
 }
 
+export async function transferTrades(ids: string[], newAccountId: string) {
+  await prisma.trade.updateMany({
+    where: { id: { in: ids } },
+    data: { accountId: newAccountId },
+  });
+  revalidatePath("/trades");
+}
+
+export async function addTagToTrades(ids: string[], tagName: string) {
+  const name = tagName.trim();
+  if (!name) return;
+  const tag = await prisma.tag.upsert({ where: { name }, update: {}, create: { name } });
+  for (const tradeId of ids) {
+    await prisma.tradeTag.upsert({
+      where: { tradeId_tagId: { tradeId, tagId: tag.id } },
+      update: {},
+      create: { tradeId, tagId: tag.id },
+    });
+  }
+  revalidatePath("/trades");
+}
+
 /**
  * Splits a trade's quantity into two trades. The original keeps
  * `keepQuantity`; a new sibling trade is created for the remainder,

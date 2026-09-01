@@ -44,6 +44,8 @@ export async function fetchReportTrades(filters: ReportFilters): Promise<ReportT
     avgEntryPrice: t.avgEntryPrice,
     quantity: t.quantity,
     multiplier: t.multiplier,
+    fees: t.fees,
+    commissions: t.commissions,
   }));
 }
 

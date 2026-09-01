@@ -1,5 +1,6 @@
 import {
   computeDailyPnl,
+  computeDayStreak,
   computeDrawdown,
   computeEquityCurve,
   computeSummaryStats,
@@ -13,6 +14,7 @@ import {
 } from "@/lib/queries/progress";
 import { computeAdherenceStreak, isDayComplete } from "@/lib/analytics/progress";
 import { DashboardClient } from "@/components/dashboard/DashboardClient";
+import type { RecentTrade } from "@/components/dashboard/RecentTradesWidget";
 
 export default async function DashboardPage() {
   const todayKey = new Date().toISOString().slice(0, 10);
@@ -28,7 +30,32 @@ export default async function DashboardPage() {
   const tradeScore = computeTradeScore(stats);
   const equityCurve = computeEquityCurve(trades, startingBalance);
   const drawdown = computeDrawdown(equityCurve);
-  const dailyPnl = Object.fromEntries(computeDailyPnl(trades));
+  const dailyPnlMap = computeDailyPnl(trades);
+  const dailyPnl = Object.fromEntries(dailyPnlMap);
+  const dayStreak = computeDayStreak(dailyPnlMap);
+
+  const recentTrades: RecentTrade[] = trades
+    .filter((t) => t.closedAt != null)
+    .sort((a, b) => b.openedAt.getTime() - a.openedAt.getTime())
+    .slice(0, 8)
+    .map((t) => ({
+      id: t.id,
+      symbol: t.symbol,
+      openedAt: t.openedAt,
+      netPnl: t.netPnl,
+      status: t.netPnl >= 0 ? "win" : "loss",
+    }));
+
+  const openPositions: RecentTrade[] = trades
+    .filter((t) => t.closedAt == null)
+    .sort((a, b) => b.openedAt.getTime() - a.openedAt.getTime())
+    .map((t) => ({
+      id: t.id,
+      symbol: t.symbol,
+      openedAt: t.openedAt,
+      netPnl: t.netPnl,
+      status: "open",
+    }));
 
   const dayResults = recentResults.map((r) => ({
     date: r.date,
@@ -46,11 +73,14 @@ export default async function DashboardPage() {
       <DashboardClient
         stats={stats}
         tradeScore={tradeScore}
+        dayStreak={dayStreak}
         equityCurve={equityCurve}
         drawdownSeries={drawdown.series}
         dailyPnl={dailyPnl}
         startingBalance={startingBalance}
         progress={progress}
+        recentTrades={recentTrades}
+        openPositions={openPositions}
       />
     </div>
   );

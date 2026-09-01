@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { Plus, Upload } from "lucide-react";
 import { listTradesWithAccount } from "@/lib/queries/trades";
+import { listAccounts } from "@/lib/actions/accounts";
 import { TradeLogTable } from "@/components/trades/TradeLogTable";
 
 export default async function TradesPage() {
-  const trades = await listTradesWithAccount();
+  const [trades, accounts] = await Promise.all([listTradesWithAccount(), listAccounts()]);
 
   return (
     <div>
@@ -31,7 +32,7 @@ export default async function TradesPage() {
         </div>
       </div>
 
-      <TradeLogTable trades={trades} />
+      <TradeLogTable trades={trades} accounts={accounts} />
     </div>
   );
 }

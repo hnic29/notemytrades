@@ -25,6 +25,8 @@ function trade(overrides: Partial<ReportTrade>): ReportTrade {
     avgEntryPrice: 100,
     quantity: 10,
     multiplier: 1,
+    fees: 0,
+    commissions: 0,
     ...overrides,
   };
 }

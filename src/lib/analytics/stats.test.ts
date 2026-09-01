@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computeDailyPnl,
+  computeDayStreak,
   computeDrawdown,
   computeEquityCurve,
   computePnlDistribution,
@@ -104,6 +105,31 @@ describe("computeDailyPnl", () => {
     ]);
     expect(map.get("2026-01-01")).toBe(60);
     expect(map.get("2026-01-02")).toBe(50);
+  });
+});
+
+describe("computeDayStreak", () => {
+  it("counts consecutive winning days ending at the most recent", () => {
+    const map = new Map([
+      ["2026-01-01", 100],
+      ["2026-01-02", -50],
+      ["2026-01-03", 200],
+      ["2026-01-04", 50],
+    ]);
+    expect(computeDayStreak(map)).toBe(2);
+  });
+
+  it("counts consecutive losing days as negative", () => {
+    const map = new Map([
+      ["2026-01-01", 100],
+      ["2026-01-02", -50],
+      ["2026-01-03", -20],
+    ]);
+    expect(computeDayStreak(map)).toBe(-2);
+  });
+
+  it("returns 0 for no days", () => {
+    expect(computeDayStreak(new Map())).toBe(0);
   });
 });
 

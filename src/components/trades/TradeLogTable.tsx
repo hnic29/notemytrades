@@ -3,11 +3,30 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import Papa from "papaparse";
-import { Trash2, Split, Combine, Download, Settings2 } from "lucide-react";
+import {
+  Trash2,
+  Split,
+  Combine,
+  Download,
+  Settings2,
+  ChevronDown,
+  Tag as TagIcon,
+  ArrowRightLeft,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatDate, formatPercent } from "@/lib/format";
+import { computeSummaryStats } from "@/lib/analytics/stats";
 import type { TradeWithAccount } from "@/lib/queries/trades";
-import { deleteTrades, mergeTrades, splitTrade } from "@/lib/actions/trades";
+import {
+  addTagToTrades,
+  deleteTrades,
+  mergeTrades,
+  splitTrade,
+  transferTrades,
+} from "@/lib/actions/trades";
+import { StatCard } from "@/components/dashboard/StatCard";
 
 type Column = {
   key: string;
@@ -18,6 +37,7 @@ type Column = {
 const COLUMNS: Column[] = [
   { key: "openedAt", label: "Date", defaultVisible: true },
   { key: "symbol", label: "Symbol", defaultVisible: true },
+  { key: "status", label: "Status", defaultVisible: true },
   { key: "side", label: "Side", defaultVisible: true },
   { key: "quantity", label: "Qty", defaultVisible: true },
   { key: "avgEntryPrice", label: "Entry", defaultVisible: true },
@@ -29,7 +49,8 @@ const COLUMNS: Column[] = [
   { key: "tags", label: "Tags", defaultVisible: false },
 ];
 
-const STORAGE_KEY = "nmt.tradeLog.columns.v1";
+const STORAGE_KEY = "nmt.tradeLog.columns.v2";
+const PAGE_SIZE_OPTIONS = [25, 50, 100];
 
 function loadColumnPrefs(): Record<string, boolean> {
   if (typeof window === "undefined") {
@@ -46,12 +67,22 @@ function loadColumnPrefs(): Record<string, boolean> {
 
 type SortKey = "openedAt" | "symbol" | "netPnl" | "netRoi" | "quantity";
 
-export function TradeLogTable({ trades }: { trades: TradeWithAccount[] }) {
+export function TradeLogTable({
+  trades,
+  accounts,
+}: {
+  trades: TradeWithAccount[];
+  accounts: { id: string; name: string }[];
+}) {
   const [visible, setVisible] = useState<Record<string, boolean>>(loadColumnPrefs);
   const [showColumnMenu, setShowColumnMenu] = useState(false);
+  const [showBulkMenu, setShowBulkMenu] = useState(false);
+  const [showTransferMenu, setShowTransferMenu] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<SortKey>("openedAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -60,6 +91,8 @@ export function TradeLogTable({ trades }: { trades: TradeWithAccount[] }) {
     setVisible(next);
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   };
+
+  const stats = useMemo(() => computeSummaryStats(trades), [trades]);
 
   const sorted = useMemo(() => {
     const rows = [...trades];
@@ -74,6 +107,10 @@ export function TradeLogTable({ trades }: { trades: TradeWithAccount[] }) {
     });
     return rows;
   }, [trades, sortKey, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageRows = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const handleSort = (key: SortKey) => {
     if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -94,30 +131,20 @@ export function TradeLogTable({ trades }: { trades: TradeWithAccount[] }) {
 
   const toggleSelectAll = () => {
     setSelected((prev) =>
-      prev.size === sorted.length ? new Set() : new Set(sorted.map((t) => t.id)),
+      prev.size === pageRows.length ? new Set() : new Set(pageRows.map((t) => t.id)),
     );
   };
 
-  const handleDeleteSelected = () => {
+  const runBulk = (label: string, action: () => Promise<void>) => {
     setError(null);
+    setShowBulkMenu(false);
+    setShowTransferMenu(false);
     startTransition(async () => {
       try {
-        await deleteTrades(Array.from(selected));
+        await action();
         setSelected(new Set());
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to delete trades");
-      }
-    });
-  };
-
-  const handleMergeSelected = () => {
-    setError(null);
-    startTransition(async () => {
-      try {
-        await mergeTrades(Array.from(selected));
-        setSelected(new Set());
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to merge trades");
+        setError(e instanceof Error ? e.message : `Failed to ${label}`);
       }
     });
   };
@@ -185,27 +212,85 @@ export function TradeLogTable({ trades }: { trades: TradeWithAccount[] }) {
 
   return (
     <div>
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard
+          label="Net Cumulative P&L"
+          value={formatCurrency(stats.netPnl)}
+          tone={stats.netPnl >= 0 ? "profit" : "loss"}
+        />
+        <StatCard
+          label="Profit Factor"
+          value={stats.profitFactor != null ? stats.profitFactor.toFixed(2) : "—"}
+        />
+        <StatCard
+          label="Trade Win %"
+          value={stats.winRate != null ? formatPercent(stats.winRate) : "—"}
+          sub={`${stats.wins}W / ${stats.losses}L`}
+        />
+        <StatCard label="Avg Win / Avg Loss" value={`${formatCurrency(stats.avgWin)} / ${formatCurrency(-stats.avgLoss)}`} />
+      </div>
+
       <div className="mb-3 flex flex-wrap items-center gap-2">
         {selected.size > 0 ? (
-          <>
-            <span className="text-sm text-text-muted">{selected.size} selected</span>
+          <div className="relative">
             <button
-              onClick={handleDeleteSelected}
-              disabled={isPending}
-              className="flex items-center gap-1.5 rounded-md border border-loss/40 px-3 py-1.5 text-sm text-loss hover:bg-loss-bg disabled:opacity-50"
+              onClick={() => setShowBulkMenu((v) => !v)}
+              className="flex items-center gap-1.5 rounded-md border border-accent/40 bg-accent/10 px-3 py-1.5 text-sm text-accent"
             >
-              <Trash2 className="h-3.5 w-3.5" /> Delete
+              {selected.size} selected · Bulk Actions <ChevronDown className="h-3.5 w-3.5" />
             </button>
-            {selected.size >= 2 && (
-              <button
-                onClick={handleMergeSelected}
-                disabled={isPending}
-                className="flex items-center gap-1.5 rounded-md border border-border-strong px-3 py-1.5 text-sm text-text hover:bg-surface-2 disabled:opacity-50"
-              >
-                <Combine className="h-3.5 w-3.5" /> Merge
-              </button>
+            {showBulkMenu && (
+              <div className="absolute left-0 z-20 mt-1 w-56 rounded-md border border-border bg-surface-2 p-1 shadow-lg">
+                <button
+                  onClick={() => runBulk("delete", () => deleteTrades(Array.from(selected)))}
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-loss hover:bg-surface-3"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Delete
+                </button>
+                {selected.size >= 2 && (
+                  <button
+                    onClick={() => runBulk("merge", () => mergeTrades(Array.from(selected)))}
+                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-text hover:bg-surface-3"
+                  >
+                    <Combine className="h-3.5 w-3.5" /> Merge
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    const tag = window.prompt("Tag to add to all selected trades:");
+                    if (!tag) return;
+                    runBulk("add tag", () => addTagToTrades(Array.from(selected), tag));
+                  }}
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-text hover:bg-surface-3"
+                >
+                  <TagIcon className="h-3.5 w-3.5" /> Add Tag
+                </button>
+                <div className="relative">
+                  <button
+                    onClick={() => setShowTransferMenu((v) => !v)}
+                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-text hover:bg-surface-3"
+                  >
+                    <ArrowRightLeft className="h-3.5 w-3.5" /> Transfer to Account
+                  </button>
+                  {showTransferMenu && (
+                    <div className="absolute left-full top-0 z-20 ml-1 w-48 rounded-md border border-border bg-surface-2 p-1 shadow-lg">
+                      {accounts.map((a) => (
+                        <button
+                          key={a.id}
+                          onClick={() =>
+                            runBulk("transfer", () => transferTrades(Array.from(selected), a.id))
+                          }
+                          className="block w-full truncate rounded px-2 py-1.5 text-left text-sm text-text hover:bg-surface-3"
+                        >
+                          {a.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
-          </>
+          </div>
         ) : (
           <div className="h-8" />
         )}
@@ -252,19 +337,20 @@ export function TradeLogTable({ trades }: { trades: TradeWithAccount[] }) {
       )}
 
       <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full min-w-[900px] border-collapse text-sm">
+        <table className="w-full min-w-[960px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-border bg-surface text-left text-text-faint">
               <th className="w-10 px-3 py-2">
                 <input
                   type="checkbox"
-                  checked={selected.size === sorted.length && sorted.length > 0}
+                  checked={selected.size === pageRows.length && pageRows.length > 0}
                   onChange={toggleSelectAll}
                   className="accent-accent"
                 />
               </th>
               {col("openedAt") && <Th onClick={() => handleSort("openedAt")}>Date</Th>}
               {col("symbol") && <Th onClick={() => handleSort("symbol")}>Symbol</Th>}
+              {col("status") && <Th>Status</Th>}
               {col("side") && <Th>Side</Th>}
               {col("quantity") && <Th onClick={() => handleSort("quantity")}>Qty</Th>}
               {col("avgEntryPrice") && <Th>Entry</Th>}
@@ -278,7 +364,7 @@ export function TradeLogTable({ trades }: { trades: TradeWithAccount[] }) {
             </tr>
           </thead>
           <tbody>
-            {sorted.map((t) => (
+            {pageRows.map((t) => (
               <tr
                 key={t.id}
                 className="border-b border-border last:border-0 hover:bg-surface"
@@ -303,6 +389,11 @@ export function TradeLogTable({ trades }: { trades: TradeWithAccount[] }) {
                     <Link href={`/trades/${t.id}`} className="hover:text-accent">
                       {t.symbol}
                     </Link>
+                  </td>
+                )}
+                {col("status") && (
+                  <td className="px-3 py-2">
+                    <StatusPill status={t.avgExitPrice == null ? "open" : t.netPnl >= 0 ? "win" : "loss"} />
                   </td>
                 )}
                 {col("side") && (
@@ -392,7 +483,64 @@ export function TradeLogTable({ trades }: { trades: TradeWithAccount[] }) {
           </tbody>
         </table>
       </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-text-muted">
+        <div className="flex items-center gap-2">
+          <span>
+            Showing {pageRows.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}–
+            {(currentPage - 1) * pageSize + pageRows.length} of {sorted.length} trades
+          </span>
+          <select
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setPage(1);
+            }}
+            className="rounded-md border border-border-strong bg-surface px-2 py-1 text-xs text-text-muted outline-none"
+          >
+            {PAGE_SIZE_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n} / page
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={currentPage <= 1}
+            className="rounded p-1.5 text-text-faint hover:bg-surface-2 hover:text-text disabled:opacity-30"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <span className="text-xs">
+            Page {currentPage} of {totalPages}
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={currentPage >= totalPages}
+            className="rounded p-1.5 text-text-faint hover:bg-surface-2 hover:text-text disabled:opacity-30"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
     </div>
+  );
+}
+
+function StatusPill({ status }: { status: "win" | "loss" | "open" }) {
+  return (
+    <span
+      className={cn(
+        "rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+        status === "win" && "bg-profit-bg text-profit",
+        status === "loss" && "bg-loss-bg text-loss",
+        status === "open" && "bg-surface-3 text-text-muted",
+      )}
+    >
+      {status === "open" ? "Open" : status === "win" ? "Win" : "Loss"}
+    </span>
   );
 }
 

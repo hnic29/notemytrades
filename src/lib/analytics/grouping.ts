@@ -11,6 +11,8 @@ export type ReportTrade = StatsTrade & {
   avgEntryPrice: number;
   quantity: number;
   multiplier: number;
+  fees: number;
+  commissions: number;
 };
 
 export type Group = { key: string; label: string; stats: SummaryStats };
