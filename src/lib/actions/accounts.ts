@@ -22,6 +22,19 @@ export async function getOrCreateDefaultAccount() {
   });
 }
 
+/** Backtested trades still need a real Account row (accountId is
+ * required on Trade), but they should never show up mixed in with a
+ * real trading account's balance — so backtesting gets one dedicated,
+ * auto-created account, shared across every session. */
+export async function getOrCreateBacktestAccount() {
+  const existing = await prisma.account.findFirst({ where: { name: "Backtesting" } });
+  if (existing) return existing;
+
+  return prisma.account.create({
+    data: { name: "Backtesting", assetType: "mixed", currency: "USD" },
+  });
+}
+
 export async function createAccount(input: {
   name: string;
   broker?: string;

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Trash2, Pencil, Link2, Link2Off } from "lucide-react";
+import { Trash2, Pencil, Link2, Link2Off, History } from "lucide-react";
 import { deleteTrade, generateShareLink, revokeShareLink } from "@/lib/actions/trades";
 
 export function TradeDetailActions({
@@ -28,6 +28,13 @@ export function TradeDetailActions({
         className="flex items-center gap-1.5 rounded-md border border-border-strong px-3 py-1.5 text-sm text-text hover:bg-surface-2"
       >
         <Pencil className="h-3.5 w-3.5" /> Edit
+      </button>
+
+      <button
+        onClick={() => router.push(`/trades/${tradeId}/replay`)}
+        className="flex items-center gap-1.5 rounded-md border border-border-strong px-3 py-1.5 text-sm text-text hover:bg-surface-2"
+      >
+        <History className="h-3.5 w-3.5" /> Replay
       </button>
 
       {slug ? (
