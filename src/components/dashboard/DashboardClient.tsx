@@ -84,6 +84,9 @@ export function DashboardClient({
   const [percentView, setPercentView] = useState(false);
   const [mounted, setMounted] = useState(false);
 
+  // Standard hydration-safe mount flag — localStorage-derived prefs must
+  // render as the SSR default on first paint, then switch client-side.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setMounted(true), []);
 
   const persist = (next: typeof prefs) => {

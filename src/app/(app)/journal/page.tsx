@@ -22,15 +22,15 @@ export default async function JournalPage(props: PageProps<"/journal">) {
     .filter((t) => t.closedAt)
     .sort((a, b) => a.closedAt!.getTime() - b.closedAt!.getTime());
 
-  let running = 0;
-  const intradayPoints: IntradayPoint[] = closed.map((t) => {
-    running += t.netPnl;
-    return {
+  const intradayPoints: IntradayPoint[] = closed.reduce<IntradayPoint[]>((points, t) => {
+    const cumulative = (points.at(-1)?.cumulative ?? 0) + t.netPnl;
+    points.push({
       time: t.closedAt!.toISOString(),
-      cumulative: running,
+      cumulative,
       label: t.closedAt!.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
-    };
-  });
+    });
+    return points;
+  }, []);
 
   const dayNetPnl = closed.reduce((sum, t) => sum + t.netPnl, 0);
 

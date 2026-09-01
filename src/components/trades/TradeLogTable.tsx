@@ -243,14 +243,16 @@ export function TradeLogTable({
               <div className="absolute left-0 z-20 mt-1 w-56 rounded-md border border-border bg-surface-2 p-1 shadow-lg">
                 <button
                   onClick={() => runBulk("delete", () => deleteTrades(Array.from(selected)))}
-                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-loss hover:bg-surface-3"
+                  disabled={isPending}
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-loss hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Trash2 className="h-3.5 w-3.5" /> Delete
                 </button>
                 {selected.size >= 2 && (
                   <button
                     onClick={() => runBulk("merge", () => mergeTrades(Array.from(selected)))}
-                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-text hover:bg-surface-3"
+                    disabled={isPending}
+                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-text hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Combine className="h-3.5 w-3.5" /> Merge
                   </button>
@@ -261,14 +263,16 @@ export function TradeLogTable({
                     if (!tag) return;
                     runBulk("add tag", () => addTagToTrades(Array.from(selected), tag));
                   }}
-                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-text hover:bg-surface-3"
+                  disabled={isPending}
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-text hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <TagIcon className="h-3.5 w-3.5" /> Add Tag
                 </button>
                 <div className="relative">
                   <button
                     onClick={() => setShowTransferMenu((v) => !v)}
-                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-text hover:bg-surface-3"
+                    disabled={isPending}
+                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-text hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <ArrowRightLeft className="h-3.5 w-3.5" /> Transfer to Account
                   </button>
@@ -280,7 +284,8 @@ export function TradeLogTable({
                           onClick={() =>
                             runBulk("transfer", () => transferTrades(Array.from(selected), a.id))
                           }
-                          className="block w-full truncate rounded px-2 py-1.5 text-left text-sm text-text hover:bg-surface-3"
+                          disabled={isPending}
+                          className="block w-full truncate rounded px-2 py-1.5 text-left text-sm text-text hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {a.name}
                         </button>

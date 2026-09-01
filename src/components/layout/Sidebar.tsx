@@ -17,6 +17,10 @@ export function Sidebar() {
   // stuck out of sync with real navigation state.
   const [optimisticHref, setOptimisticHref] = useState<string | null>(null);
   useEffect(() => {
+    // Clearing the optimistic override once the real pathname catches up
+    // is the point of this workaround (see comment above) — there's no
+    // click/event to hang this off of, it's reacting to router state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setOptimisticHref(null);
   }, [pathname]);
   const activePath = optimisticHref ?? pathname;

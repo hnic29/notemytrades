@@ -62,6 +62,10 @@ export function BacktestWorkspace({
   useEffect(() => {
     if (!playing) return;
     if (visibleCount >= candles.length) {
+      // Correcting playing->false once playback reaches the end is the
+      // external-timer/state-machine case set-state-in-effect exists to
+      // flag false positives on — there's no event to hang this off of.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPlaying(false);
       return;
     }

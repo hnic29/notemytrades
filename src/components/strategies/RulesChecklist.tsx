@@ -27,6 +27,9 @@ export function RulesChecklist({
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    // Standard hydration-safe mount flag, paired with the localStorage
+    // read right below it (also unsafe to run during SSR).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
     try {
       const raw = window.localStorage.getItem(storageKey(strategyId));

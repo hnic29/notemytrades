@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import {
   ArrowRight,
@@ -234,7 +235,7 @@ export function OnboardingWizard({
               subtitle="Import a CSV from your broker now, or skip and add trades as you go."
             />
             <div className="mb-5 flex flex-col gap-3">
-              <a
+              <Link
                 href="/trades/import"
                 className="rounded-md border border-border-strong px-4 py-3 text-sm text-text hover:bg-surface-2"
               >
@@ -243,7 +244,7 @@ export function OnboardingWizard({
                   Opens the import tool in this tab — come back to Settings anytime to keep
                   onboarding later.
                 </div>
-              </a>
+              </Link>
             </div>
             <StepNav>
               <BackButton onClick={back} />
