@@ -3,7 +3,7 @@
 import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { computeTradeMath, type TradeSide } from "@/lib/trade-math";
+import { computeTradeMath, resolveClosedAt, type TradeSide } from "@/lib/trade-math";
 
 export type ManualTradeInput = {
   accountId: string;
@@ -22,6 +22,7 @@ export type ManualTradeInput = {
   profitTarget: number | null;
   quickNote: string | null;
   tagNames: string[];
+  strategyId: string | null;
 };
 
 function buildTradeData(input: ManualTradeInput) {
@@ -35,14 +36,21 @@ function buildTradeData(input: ManualTradeInput) {
     commissions: input.commissions,
   });
 
+  const openedAt = new Date(input.openedAt);
+  const closedAt = resolveClosedAt(
+    openedAt,
+    input.closedAt ? new Date(input.closedAt) : null,
+    input.avgExitPrice,
+  );
+
   return {
     accountId: input.accountId,
     symbol: input.symbol.toUpperCase().trim(),
     assetType: input.assetType,
     side: input.side,
     status: input.avgExitPrice == null ? "open" : "closed",
-    openedAt: new Date(input.openedAt),
-    closedAt: input.closedAt ? new Date(input.closedAt) : null,
+    openedAt,
+    closedAt,
     quantity: input.quantity,
     multiplier: input.multiplier,
     avgEntryPrice: input.avgEntryPrice,
@@ -55,6 +63,7 @@ function buildTradeData(input: ManualTradeInput) {
     stopLoss: input.stopLoss,
     profitTarget: input.profitTarget,
     quickNote: input.quickNote,
+    strategyId: input.strategyId,
     source: "manual",
   };
 }

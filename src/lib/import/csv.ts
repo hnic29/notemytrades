@@ -1,4 +1,4 @@
-import { computeTradeMath, type TradeSide } from "@/lib/trade-math";
+import { computeTradeMath, resolveClosedAt, type TradeSide } from "@/lib/trade-math";
 
 export type ColumnMapping = {
   symbol: string;
@@ -100,7 +100,12 @@ export function mapCsvRows(
     }
 
     const avgExitPrice = mapping.exitPrice ? parseNumber(row[mapping.exitPrice]) : null;
-    const closedAt = mapping.closedAt ? parseDate(row[mapping.closedAt]) : null;
+    const parsedClosedAt = mapping.closedAt ? parseDate(row[mapping.closedAt]) : null;
+    const closedAt = resolveClosedAt(
+      new Date(openedAt),
+      parsedClosedAt ? new Date(parsedClosedAt) : null,
+      avgExitPrice,
+    )?.toISOString() ?? null;
     const fees = (mapping.fees ? parseNumber(row[mapping.fees]) : 0) ?? 0;
     const commissions =
       (mapping.commissions ? parseNumber(row[mapping.commissions]) : 0) ?? 0;

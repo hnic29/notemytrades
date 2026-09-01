@@ -111,6 +111,13 @@ export default async function TradeDetailPage(props: PageProps<"/trades/[id]">) 
         />
         <Stat label="Gross P&L" value={formatCurrency(trade.grossPnl, trade.account.currency)} />
         <Stat label="Source" value={trade.source ?? "manual"} />
+        {trade.strategy && (
+          <Stat
+            label="Strategy"
+            value={trade.strategy.name}
+            href={`/strategies/${trade.strategy.id}`}
+          />
+        )}
       </div>
 
       {trade.tags.length > 0 && (
@@ -136,11 +143,17 @@ export default async function TradeDetailPage(props: PageProps<"/trades/[id]">) 
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, href }: { label: string; value: string; href?: string }) {
   return (
     <div className="rounded-lg border border-border bg-surface p-3">
       <div className="text-xs text-text-faint">{label}</div>
-      <div className="mt-1 text-sm font-medium text-text">{value}</div>
+      {href ? (
+        <Link href={href} className="mt-1 block text-sm font-medium text-accent hover:underline">
+          {value}
+        </Link>
+      ) : (
+        <div className="mt-1 text-sm font-medium text-text">{value}</div>
+      )}
     </div>
   );
 }

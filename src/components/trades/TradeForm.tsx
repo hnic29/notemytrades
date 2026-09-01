@@ -7,6 +7,7 @@ import { toDatetimeLocalValue } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 type AccountOption = { id: string; name: string };
+type StrategyOption = { id: string; name: string };
 
 const ASSET_TYPES = [
   { value: "stock", label: "Stock" },
@@ -34,6 +35,7 @@ export type TradeFormInitial = {
   profitTarget: number | null;
   quickNote: string | null;
   tagNames: string[];
+  strategyId: string | null;
 };
 
 const DEFAULTS: Omit<TradeFormInitial, "accountId"> = {
@@ -52,13 +54,16 @@ const DEFAULTS: Omit<TradeFormInitial, "accountId"> = {
   profitTarget: null,
   quickNote: null,
   tagNames: [],
+  strategyId: null,
 };
 
 export function TradeForm({
   accounts,
+  strategies = [],
   initial,
 }: {
   accounts: AccountOption[];
+  strategies?: StrategyOption[];
   initial?: TradeFormInitial;
 }) {
   const router = useRouter();
@@ -133,6 +138,21 @@ export function TradeForm({
             {ASSET_TYPES.map((a) => (
               <option key={a.value} value={a.value}>
                 {a.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        <Field label="Strategy">
+          <select
+            value={values.strategyId ?? ""}
+            onChange={(e) => set("strategyId", e.target.value || null)}
+            className={inputClass}
+          >
+            <option value="">None</option>
+            {strategies.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
               </option>
             ))}
           </select>

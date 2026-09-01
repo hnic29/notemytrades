@@ -1,12 +1,17 @@
 import { notFound } from "next/navigation";
 import { listAccounts } from "@/lib/actions/accounts";
 import { getTradeById } from "@/lib/queries/trades";
+import { listStrategies } from "@/lib/queries/strategies";
 import { TradeForm, type TradeFormInitial } from "@/components/trades/TradeForm";
 import { toDatetimeLocalValue } from "@/lib/format";
 
 export default async function EditTradePage(props: PageProps<"/trades/[id]/edit">) {
   const { id } = await props.params;
-  const [trade, accounts] = await Promise.all([getTradeById(id), listAccounts()]);
+  const [trade, accounts, strategies] = await Promise.all([
+    getTradeById(id),
+    listAccounts(),
+    listStrategies(),
+  ]);
   if (!trade) notFound();
 
   const initial: TradeFormInitial = {
@@ -27,12 +32,13 @@ export default async function EditTradePage(props: PageProps<"/trades/[id]/edit"
     profitTarget: trade.profitTarget,
     quickNote: trade.quickNote,
     tagNames: trade.tags.map((t) => t.tag.name),
+    strategyId: trade.strategyId,
   };
 
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold text-text">Edit Trade</h1>
-      <TradeForm accounts={accounts} initial={initial} />
+      <TradeForm accounts={accounts} strategies={strategies} initial={initial} />
     </div>
   );
 }

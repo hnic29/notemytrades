@@ -39,6 +39,25 @@ export function computeTradeMath(input: TradeMathInput): TradeMathResult {
   return { grossPnl, netPnl, netRoi, costBasis };
 }
 
+/**
+ * Every aggregate stat in the app (dashboard, reports, strategy stats)
+ * treats `closedAt != null` as "this trade counts as closed." A trade
+ * with an exit price but no closedAt would silently vanish from every
+ * one of them, so every ingestion path (manual entry, CSV import, bulk
+ * import) must resolve closedAt through this before persisting: if an
+ * exit price is set but no close time was given, fall back to the open
+ * time rather than leaving the trade in permanent aggregate limbo.
+ */
+export function resolveClosedAt(
+  openedAt: Date,
+  closedAt: Date | null,
+  avgExitPrice: number | null,
+): Date | null {
+  if (closedAt) return closedAt;
+  if (avgExitPrice != null) return openedAt;
+  return null;
+}
+
 export type ExecutionLike = {
   side: "buy" | "sell";
   quantity: number;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { averageExecutions, computeTradeMath } from "./trade-math";
+import { averageExecutions, computeTradeMath, resolveClosedAt } from "./trade-math";
 
 describe("computeTradeMath", () => {
   it("computes a winning long stock trade", () => {
@@ -74,6 +74,23 @@ describe("computeTradeMath", () => {
       commissions: 0,
     });
     expect(result.netRoi).toBeNull();
+  });
+});
+
+describe("resolveClosedAt", () => {
+  const opened = new Date("2026-01-01T09:30:00Z");
+  const closed = new Date("2026-01-01T10:00:00Z");
+
+  it("keeps an explicit closedAt as-is", () => {
+    expect(resolveClosedAt(opened, closed, 110)).toBe(closed);
+  });
+
+  it("falls back to openedAt when an exit price is set but closedAt is missing", () => {
+    expect(resolveClosedAt(opened, null, 110)).toBe(opened);
+  });
+
+  it("stays null when there's no exit price (still open)", () => {
+    expect(resolveClosedAt(opened, null, null)).toBeNull();
   });
 });
 
