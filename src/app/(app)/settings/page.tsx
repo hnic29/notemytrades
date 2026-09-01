@@ -2,6 +2,7 @@ import { getSettings } from "@/lib/queries/settings";
 import { listAllAccounts } from "@/lib/actions/accounts";
 import { AiSettingsForm } from "@/components/settings/AiSettingsForm";
 import { AccountsManager } from "@/components/settings/AccountsManager";
+import { DataManager } from "@/components/settings/DataManager";
 
 export default async function SettingsPage() {
   const [settings, accounts] = await Promise.all([getSettings(), listAllAccounts()]);
@@ -30,6 +31,15 @@ export default async function SettingsPage() {
           dashboard&apos;s %-view toggle and prop account balance tracking.
         </p>
         <AccountsManager accounts={accounts} />
+      </section>
+
+      <section>
+        <h2 className="mb-1 text-lg font-medium text-text">Data</h2>
+        <p className="mb-4 text-sm text-text-faint">
+          This app is self-hosted — the SQLite file on disk is your only copy. Export a backup
+          periodically, especially before a reset.
+        </p>
+        <DataManager />
       </section>
     </div>
   );
