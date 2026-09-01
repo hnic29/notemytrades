@@ -8,7 +8,9 @@ const dbPath =
   process.env.DATABASE_URL?.replace(/^file:/, "") ?? "./data/notemytrades.db";
 
 const adapter = new PrismaBetterSqlite3({
-  url: path.isAbsolute(dbPath) ? dbPath : path.join(process.cwd(), dbPath),
+  url: path.isAbsolute(dbPath)
+    ? dbPath
+    : path.join(/* turbopackIgnore: true */ process.cwd(), dbPath),
 });
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
