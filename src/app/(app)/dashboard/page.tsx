@@ -6,12 +6,22 @@ import {
   computeTradeScore,
 } from "@/lib/analytics/stats";
 import { getDashboardTrades, getTotalStartingBalance } from "@/lib/queries/dashboard";
+import {
+  getStatesForDate,
+  listActiveDailyRules,
+  listRecentDailyResults,
+} from "@/lib/queries/progress";
+import { computeAdherenceStreak, isDayComplete } from "@/lib/analytics/progress";
 import { DashboardClient } from "@/components/dashboard/DashboardClient";
 
 export default async function DashboardPage() {
-  const [trades, startingBalance] = await Promise.all([
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const [trades, startingBalance, dailyRules, todayStates, recentResults] = await Promise.all([
     getDashboardTrades(),
     getTotalStartingBalance(),
+    listActiveDailyRules(),
+    getStatesForDate(todayKey),
+    listRecentDailyResults(),
   ]);
 
   const stats = computeSummaryStats(trades);
@@ -19,6 +29,16 @@ export default async function DashboardPage() {
   const equityCurve = computeEquityCurve(trades, startingBalance);
   const drawdown = computeDrawdown(equityCurve);
   const dailyPnl = Object.fromEntries(computeDailyPnl(trades));
+
+  const dayResults = recentResults.map((r) => ({
+    date: r.date,
+    passed: isDayComplete(r.passed, r.evaluated, r.totalActiveRules),
+  }));
+  const progress = {
+    streak: computeAdherenceStreak(dayResults),
+    ruleCount: dailyRules.length,
+    passedToday: todayStates.filter((s) => s.tradeId == null && s.passed).length,
+  };
 
   return (
     <div>
@@ -30,6 +50,7 @@ export default async function DashboardPage() {
         drawdownSeries={drawdown.series}
         dailyPnl={dailyPnl}
         startingBalance={startingBalance}
+        progress={progress}
       />
     </div>
   );

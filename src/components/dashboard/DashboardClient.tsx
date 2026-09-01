@@ -10,13 +10,15 @@ import { CalendarHeatmap } from "./CalendarHeatmap";
 import { TradeScoreGauge } from "./TradeScoreGauge";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import type { EquityPoint, SummaryStats } from "@/lib/analytics/stats";
+import Link from "next/link";
 
 type WidgetKey =
   | "stats"
   | "tradeScore"
   | "equityCurve"
   | "drawdown"
-  | "calendar";
+  | "calendar"
+  | "progressTracker";
 
 const WIDGET_LABELS: Record<WidgetKey, string> = {
   stats: "Summary Stats",
@@ -24,10 +26,18 @@ const WIDGET_LABELS: Record<WidgetKey, string> = {
   equityCurve: "Equity Curve",
   drawdown: "Drawdown",
   calendar: "Calendar",
+  progressTracker: "Progress Tracker",
 };
 
-const DEFAULT_ORDER: WidgetKey[] = ["stats", "tradeScore", "equityCurve", "drawdown", "calendar"];
-const STORAGE_KEY = "nmt.dashboard.widgets.v1";
+const DEFAULT_ORDER: WidgetKey[] = [
+  "stats",
+  "tradeScore",
+  "equityCurve",
+  "drawdown",
+  "calendar",
+  "progressTracker",
+];
+const STORAGE_KEY = "nmt.dashboard.widgets.v2";
 
 function loadPrefs(): { order: WidgetKey[]; hidden: WidgetKey[] } {
   if (typeof window === "undefined") return { order: DEFAULT_ORDER, hidden: [] };
@@ -48,6 +58,7 @@ export function DashboardClient({
   drawdownSeries,
   dailyPnl,
   startingBalance,
+  progress,
 }: {
   stats: SummaryStats;
   tradeScore: number | null;
@@ -55,6 +66,7 @@ export function DashboardClient({
   drawdownSeries: { date: string; drawdown: number }[];
   dailyPnl: Record<string, number>;
   startingBalance: number;
+  progress: { streak: number; ruleCount: number; passedToday: number } | null;
 }) {
   const [prefs, setPrefs] = useState(loadPrefs);
   const [showMenu, setShowMenu] = useState(false);
@@ -127,6 +139,33 @@ export function DashboardClient({
     equityCurve: <EquityCurveChart data={equityCurve} />,
     drawdown: <DrawdownChart data={drawdownSeries} />,
     calendar: <CalendarHeatmap dailyPnl={dailyPnl} />,
+    progressTracker: progress ? (
+      progress.ruleCount === 0 ? (
+        <p className="text-sm text-text-faint">
+          No active daily rules yet.{" "}
+          <Link href="/progress" className="text-accent hover:underline">
+            Set one up
+          </Link>
+          .
+        </p>
+      ) : (
+        <div className="flex items-center gap-6">
+          <div>
+            <div className="text-2xl font-semibold text-accent">{progress.streak}</div>
+            <div className="text-xs text-text-faint">day streak</div>
+          </div>
+          <div>
+            <div className="text-2xl font-semibold text-text">
+              {progress.passedToday}/{progress.ruleCount}
+            </div>
+            <div className="text-xs text-text-faint">followed today</div>
+          </div>
+          <Link href="/progress" className="ml-auto text-xs text-accent hover:underline">
+            Check in →
+          </Link>
+        </div>
+      )
+    ) : null,
   };
 
   return (
