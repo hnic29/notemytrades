@@ -155,12 +155,24 @@ const has = (headers: string[], name: string) =>
 
 export const FORMAT_PRESETS: FormatPreset[] = [
   {
+    // MT4's classic "Trade History" statement report duplicates the
+    // "Item"/"Size" and "Price" column names for entry vs exit — most
+    // export paths (Excel, CSV converters) disambiguate the second
+    // occurrence with a ".1" suffix, which is what this targets. MT5's
+    // equivalent Positions report uses "Symbol"/"Volume" instead of
+    // "Item"/"Size" but is otherwise the same shape, so both header
+    // sets are accepted here rather than shipping a separate,
+    // unverified MT5-only preset.
     id: "mt4",
     label: "MetaTrader 4/5 export",
-    detect: (h) => has(h, "Ticket") && has(h, "Item") && has(h, "Type") && has(h, "Profit"),
-    mapping: () => ({
-      symbol: "Item",
-      quantity: "Size",
+    detect: (h) =>
+      has(h, "Ticket") &&
+      (has(h, "Item") || has(h, "Symbol")) &&
+      has(h, "Type") &&
+      has(h, "Profit"),
+    mapping: (h) => ({
+      symbol: has(h, "Item") ? "Item" : "Symbol",
+      quantity: has(h, "Size") ? "Size" : "Volume",
       entryPrice: "Price",
       exitPrice: "Price.1",
       openedAt: "Open Time",
@@ -186,6 +198,162 @@ export const FORMAT_PRESETS: FormatPreset[] = [
 
 export function detectFormat(headers: string[]): FormatPreset | null {
   return FORMAT_PRESETS.find((p) => p.detect(headers)) ?? null;
+}
+
+/**
+ * Formats that can't be handled by column mapping at all — thinkorswim's
+ * "Account Statement" trade history is one row per *execution* (a fill),
+ * not one row per completed trade: an entry and its exit are two
+ * separate rows sharing no column that pairs them except symbol,
+ * chronological order, and a "Pos Effect" of TO OPEN / TO CLOSE.
+ * detectFormat()/mapCsvRows() assume entry+exit live on the same row,
+ * so this needs its own pipeline (aggregateThinkorswimExecutions)
+ * instead of a ColumnMapping.
+ */
+export type AggregatePreset = {
+  id: string;
+  label: string;
+  detect: (headers: string[]) => boolean;
+};
+
+export const AGGREGATE_PRESETS: AggregatePreset[] = [
+  {
+    id: "thinkorswim",
+    label: "thinkorswim Account Statement (Trade History)",
+    detect: (h) =>
+      has(h, "Exec Time") && has(h, "Pos Effect") && has(h, "Side") && has(h, "Qty") && has(h, "Symbol"),
+  },
+];
+
+export function detectAggregateFormat(headers: string[]): AggregatePreset | null {
+  return AGGREGATE_PRESETS.find((p) => p.detect(headers)) ?? null;
+}
+
+type OpenLot = { side: TradeSide; quantityRemaining: number; price: number; time: string };
+
+/**
+ * Pairs thinkorswim's "TO OPEN"/"TO CLOSE" executions into completed
+ * trades via per-symbol FIFO matching: a closing execution consumes
+ * quantity from the oldest still-open lot(s) for that symbol first,
+ * splitting into multiple output trades if it spans more than one
+ * lot rather than blending entry prices together. Options legs (calls/
+ * puts/spreads) aren't specially handled beyond whatever string is in
+ * the Symbol column — as long as each leg has a distinct symbol string
+ * (thinkorswim's option symbols include strike/expiry), pairing is
+ * still correct per-instrument; multi-leg spread P&L isn't reconciled
+ * as a single combo trade.
+ */
+export function aggregateThinkorswimExecutions(rows: Record<string, string>[]): ParseResult {
+  const trades: ParsedTradeRow[] = [];
+  const errors: ParseResult["errors"] = [];
+
+  type Exec = {
+    rowNum: number;
+    symbol: string;
+    side: "buy" | "sell";
+    posEffect: "open" | "close";
+    qty: number;
+    price: number;
+    time: string;
+  };
+
+  const execs: Exec[] = [];
+
+  rows.forEach((row, index) => {
+    const rowNum = index + 2;
+    const symbol = row["Symbol"]?.trim().toUpperCase();
+    const sideRaw = row["Side"]?.trim().toUpperCase();
+    const posEffectRaw = row["Pos Effect"]?.trim().toUpperCase();
+    const qty = parseNumber(row["Qty"]);
+    const price = parseNumber(row["Price"]);
+    const time = parseDate(row["Exec Time"]);
+
+    if (!symbol) return errors.push({ row: rowNum, message: "Missing symbol" });
+    if (sideRaw !== "BUY" && sideRaw !== "SELL") {
+      return errors.push({ row: rowNum, message: `Unrecognized Side "${row["Side"] ?? ""}"` });
+    }
+    if (!posEffectRaw?.includes("OPEN") && !posEffectRaw?.includes("CLOSE")) {
+      return errors.push({
+        row: rowNum,
+        message: `Unrecognized Pos Effect "${row["Pos Effect"] ?? ""}"`,
+      });
+    }
+    if (qty == null || qty <= 0) return errors.push({ row: rowNum, message: "Missing or invalid Qty" });
+    if (price == null) return errors.push({ row: rowNum, message: "Missing or invalid Price" });
+    if (!time) return errors.push({ row: rowNum, message: "Missing or invalid Exec Time" });
+
+    execs.push({
+      rowNum,
+      symbol,
+      side: sideRaw === "BUY" ? "buy" : "sell",
+      posEffect: posEffectRaw.includes("OPEN") ? "open" : "close",
+      qty: Math.abs(qty),
+      price,
+      time,
+    });
+  });
+
+  // Chronological order is what makes FIFO matching correct — CSV row
+  // order isn't guaranteed to already be sorted this way.
+  execs.sort((a, b) => a.time.localeCompare(b.time));
+
+  const openLotsBySymbol = new Map<string, OpenLot[]>();
+
+  for (const ex of execs) {
+    const queue = openLotsBySymbol.get(ex.symbol) ?? [];
+    openLotsBySymbol.set(ex.symbol, queue);
+
+    if (ex.posEffect === "open") {
+      const side: TradeSide = ex.side === "buy" ? "long" : "short";
+      queue.push({ side, quantityRemaining: ex.qty, price: ex.price, time: ex.time });
+      continue;
+    }
+
+    let remainingToClose = ex.qty;
+    while (remainingToClose > 0) {
+      const lot = queue[0];
+      if (!lot) {
+        errors.push({
+          row: ex.rowNum,
+          message: `Closing execution for ${ex.symbol} has no matching open lot (${remainingToClose} unmatched)`,
+        });
+        break;
+      }
+
+      const matchedQty = Math.min(lot.quantityRemaining, remainingToClose);
+      const math = computeTradeMath({
+        side: lot.side,
+        quantity: matchedQty,
+        multiplier: 1,
+        avgEntryPrice: lot.price,
+        avgExitPrice: ex.price,
+        fees: 0,
+        commissions: 0,
+      });
+      const closedAt =
+        resolveClosedAt(new Date(lot.time), new Date(ex.time), ex.price)?.toISOString() ?? ex.time;
+
+      trades.push({
+        symbol: ex.symbol,
+        side: lot.side,
+        quantity: matchedQty,
+        avgEntryPrice: lot.price,
+        avgExitPrice: ex.price,
+        openedAt: lot.time,
+        closedAt,
+        fees: 0,
+        commissions: 0,
+        netPnl: math.netPnl,
+        netRoi: math.netRoi,
+      });
+
+      lot.quantityRemaining -= matchedQty;
+      remainingToClose -= matchedQty;
+      if (lot.quantityRemaining <= 0) queue.shift();
+    }
+  }
+
+  return { trades, errors };
 }
 
 const FIELD_NAME_HINTS: Record<

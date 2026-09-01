@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { detectFormat, guessMapping, mapCsvRows, type ColumnMapping } from "./csv";
+import {
+  aggregateThinkorswimExecutions,
+  detectAggregateFormat,
+  detectFormat,
+  guessMapping,
+  mapCsvRows,
+  type ColumnMapping,
+} from "./csv";
 
 const baseMapping: ColumnMapping = {
   symbol: "Symbol",
@@ -91,9 +98,23 @@ describe("mapCsvRows", () => {
 });
 
 describe("detectFormat", () => {
-  it("detects an MT4/5-style export", () => {
+  it("detects an MT4-style export (Item/Size headers)", () => {
     const preset = detectFormat(["Ticket", "Open Time", "Type", "Size", "Item", "Price", "Profit"]);
     expect(preset?.id).toBe("mt4");
+    expect(preset?.mapping(["Ticket", "Open Time", "Type", "Size", "Item", "Price", "Profit"])).toMatchObject({
+      symbol: "Item",
+      quantity: "Size",
+    });
+  });
+
+  it("detects an MT5-style export (Symbol/Volume headers)", () => {
+    const headers = ["Ticket", "Open Time", "Type", "Volume", "Symbol", "Price", "Profit"];
+    const preset = detectFormat(headers);
+    expect(preset?.id).toBe("mt4");
+    expect(preset?.mapping(headers)).toMatchObject({
+      symbol: "Symbol",
+      quantity: "Volume",
+    });
   });
 
   it("detects a TradingView strategy tester export", () => {
@@ -103,6 +124,92 @@ describe("detectFormat", () => {
 
   it("returns null for an unrecognized header set", () => {
     expect(detectFormat(["A", "B", "C"])).toBeNull();
+  });
+});
+
+describe("detectAggregateFormat", () => {
+  it("detects a thinkorswim account statement export", () => {
+    const preset = detectAggregateFormat([
+      "Exec Time",
+      "Spread",
+      "Side",
+      "Qty",
+      "Pos Effect",
+      "Symbol",
+      "Price",
+      "Net Price",
+    ]);
+    expect(preset?.id).toBe("thinkorswim");
+  });
+
+  it("returns null for a row-per-trade format", () => {
+    expect(detectAggregateFormat(["Ticket", "Item", "Type", "Size", "Price", "Profit"])).toBeNull();
+  });
+});
+
+describe("aggregateThinkorswimExecutions", () => {
+  it("pairs a simple TO OPEN/TO CLOSE round trip into one trade", () => {
+    const { trades, errors } = aggregateThinkorswimExecutions([
+      { "Exec Time": "1/5/2026 09:30:00", Side: "BUY", Qty: "100", "Pos Effect": "TO OPEN", Symbol: "AAPL", Price: "150" },
+      { "Exec Time": "1/5/2026 10:00:00", Side: "SELL", Qty: "100", "Pos Effect": "TO CLOSE", Symbol: "AAPL", Price: "160" },
+    ]);
+    expect(errors).toEqual([]);
+    expect(trades).toHaveLength(1);
+    expect(trades[0]).toMatchObject({ symbol: "AAPL", side: "long", quantity: 100, netPnl: 1000 });
+  });
+
+  it("splits a close that spans two separate opens (FIFO) into two trades", () => {
+    const { trades, errors } = aggregateThinkorswimExecutions([
+      { "Exec Time": "1/5/2026 09:30:00", Side: "BUY", Qty: "50", "Pos Effect": "TO OPEN", Symbol: "MSFT", Price: "100" },
+      { "Exec Time": "1/5/2026 09:31:00", Side: "BUY", Qty: "50", "Pos Effect": "TO OPEN", Symbol: "MSFT", Price: "110" },
+      { "Exec Time": "1/5/2026 10:00:00", Side: "SELL", Qty: "100", "Pos Effect": "TO CLOSE", Symbol: "MSFT", Price: "120" },
+    ]);
+    expect(errors).toEqual([]);
+    expect(trades).toHaveLength(2);
+    expect(trades[0]).toMatchObject({ avgEntryPrice: 100, quantity: 50, netPnl: 1000 });
+    expect(trades[1]).toMatchObject({ avgEntryPrice: 110, quantity: 50, netPnl: 500 });
+  });
+
+  it("handles a short round trip (SELL TO OPEN, BUY TO CLOSE)", () => {
+    const { trades } = aggregateThinkorswimExecutions([
+      { "Exec Time": "1/5/2026 09:30:00", Side: "SELL", Qty: "20", "Pos Effect": "TO OPEN", Symbol: "TSLA", Price: "200" },
+      { "Exec Time": "1/5/2026 10:00:00", Side: "BUY", Qty: "20", "Pos Effect": "TO CLOSE", Symbol: "TSLA", Price: "180" },
+    ]);
+    expect(trades[0]).toMatchObject({ side: "short", netPnl: 400 });
+  });
+
+  it("keeps separate symbols' open lots independent", () => {
+    const { trades } = aggregateThinkorswimExecutions([
+      { "Exec Time": "1/5/2026 09:30:00", Side: "BUY", Qty: "10", "Pos Effect": "TO OPEN", Symbol: "AAPL", Price: "100" },
+      { "Exec Time": "1/5/2026 09:31:00", Side: "BUY", Qty: "10", "Pos Effect": "TO OPEN", Symbol: "MSFT", Price: "200" },
+      { "Exec Time": "1/5/2026 10:00:00", Side: "SELL", Qty: "10", "Pos Effect": "TO CLOSE", Symbol: "AAPL", Price: "110" },
+    ]);
+    expect(trades).toHaveLength(1);
+    expect(trades[0].symbol).toBe("AAPL");
+  });
+
+  it("reports a row error for a close with no matching open lot", () => {
+    const { trades, errors } = aggregateThinkorswimExecutions([
+      { "Exec Time": "1/5/2026 10:00:00", Side: "SELL", Qty: "10", "Pos Effect": "TO CLOSE", Symbol: "GME", Price: "50" },
+    ]);
+    expect(trades).toHaveLength(0);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toMatch(/no matching open lot/i);
+  });
+
+  it("reports a row error for an unrecognized Side value", () => {
+    const { errors } = aggregateThinkorswimExecutions([
+      { "Exec Time": "1/5/2026 09:30:00", Side: "SHORT", Qty: "10", "Pos Effect": "TO OPEN", Symbol: "AAPL", Price: "100" },
+    ]);
+    expect(errors[0].message).toMatch(/side/i);
+  });
+
+  it("leaves an unmatched open lot uncounted (still open, no error)", () => {
+    const { trades, errors } = aggregateThinkorswimExecutions([
+      { "Exec Time": "1/5/2026 09:30:00", Side: "BUY", Qty: "10", "Pos Effect": "TO OPEN", Symbol: "AAPL", Price: "100" },
+    ]);
+    expect(trades).toHaveLength(0);
+    expect(errors).toEqual([]);
   });
 });
 

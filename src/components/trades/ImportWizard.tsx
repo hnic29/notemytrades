@@ -4,7 +4,15 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import Papa from "papaparse";
 import { Upload } from "lucide-react";
-import { detectFormat, guessMapping, mapCsvRows, type ColumnMapping } from "@/lib/import/csv";
+import {
+  detectFormat,
+  detectAggregateFormat,
+  aggregateThinkorswimExecutions,
+  guessMapping,
+  mapCsvRows,
+  type ColumnMapping,
+  type ParseResult,
+} from "@/lib/import/csv";
 import { bulkImportTrades } from "@/lib/actions/trades";
 import { computeSummaryStats } from "@/lib/analytics/stats";
 import { formatCurrency, formatPercent } from "@/lib/format";
@@ -33,6 +41,8 @@ export function ImportWizard({ accounts }: { accounts: AccountOption[] }) {
   const [fileName, setFileName] = useState<string | null>(null);
   const [presetLabel, setPresetLabel] = useState<string | null>(null);
   const [mapping, setMapping] = useState<ColumnMapping | null>(null);
+  const [aggregateLabel, setAggregateLabel] = useState<string | null>(null);
+  const [aggregatePresetId, setAggregatePresetId] = useState<string | null>(null);
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
   const [assetType, setAssetType] = useState("stock");
   const [isPending, startTransition] = useTransition();
@@ -51,6 +61,18 @@ export function ImportWizard({ accounts }: { accounts: AccountOption[] }) {
         const hdrs = results.meta.fields ?? [];
         setHeaders(hdrs);
         setRows(results.data);
+
+        const aggregatePreset = detectAggregateFormat(hdrs);
+        if (aggregatePreset) {
+          // No column mapping to do — the pipeline is fixed for this format.
+          setAggregateLabel(aggregatePreset.label);
+          setAggregatePresetId(aggregatePreset.id);
+          setPresetLabel(null);
+          setMapping(null);
+          return;
+        }
+        setAggregateLabel(null);
+        setAggregatePresetId(null);
 
         const preset = detectFormat(hdrs);
         const empty: ColumnMapping = {
@@ -77,10 +99,12 @@ export function ImportWizard({ accounts }: { accounts: AccountOption[] }) {
     });
   };
 
-  const parsed = useMemo(() => {
-    if (!mapping || rows.length === 0) return null;
+  const parsed: ParseResult | null = useMemo(() => {
+    if (rows.length === 0) return null;
+    if (aggregateLabel) return aggregateThinkorswimExecutions(rows);
+    if (!mapping) return null;
     return mapCsvRows(rows, mapping);
-  }, [mapping, rows]);
+  }, [mapping, rows, aggregateLabel]);
 
   const handleImport = () => {
     if (!parsed || parsed.trades.length === 0 || !accountId) return;
@@ -90,7 +114,7 @@ export function ImportWizard({ accounts }: { accounts: AccountOption[] }) {
         const count = await bulkImportTrades(
           accountId,
           assetType,
-          fileName?.replace(/\.[^.]+$/, "") || "generic",
+          aggregatePresetId ?? fileName?.replace(/\.[^.]+$/, "") ?? "generic",
           parsed.trades,
         );
         setImportedCount(count);
@@ -171,14 +195,14 @@ export function ImportWizard({ accounts }: { accounts: AccountOption[] }) {
         </div>
       )}
 
-      {headers.length > 0 && mapping && (
+      {headers.length > 0 && (mapping || aggregateLabel) && (
         <>
           <div className="flex items-center justify-between rounded-md border border-border bg-surface px-4 py-3 text-sm">
             <span className="text-text-muted">
               {fileName} · {rows.length} row{rows.length === 1 ? "" : "s"}
-              {presetLabel && (
+              {(presetLabel || aggregateLabel) && (
                 <span className="ml-2 rounded-full bg-accent/10 px-2 py-0.5 text-xs text-accent">
-                  Detected: {presetLabel}
+                  Detected: {presetLabel ?? aggregateLabel}
                 </span>
               )}
             </span>
@@ -187,6 +211,8 @@ export function ImportWizard({ accounts }: { accounts: AccountOption[] }) {
                 setHeaders([]);
                 setRows([]);
                 setMapping(null);
+                setAggregateLabel(null);
+                setAggregatePresetId(null);
                 setFileName(null);
               }}
               className="text-text-faint hover:text-text"
@@ -194,6 +220,14 @@ export function ImportWizard({ accounts }: { accounts: AccountOption[] }) {
               Choose a different file
             </button>
           </div>
+
+          {aggregateLabel && (
+            <p className="rounded-md border border-border bg-surface px-4 py-3 text-sm text-text-muted">
+              This file lists individual executions (fills), not one row per trade — entries and
+              exits are automatically paired FIFO by symbol, in chronological order. There&apos;s
+              no column mapping to configure for this format.
+            </p>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <label className="block">
@@ -228,6 +262,7 @@ export function ImportWizard({ accounts }: { accounts: AccountOption[] }) {
             </label>
           </div>
 
+          {mapping && (
           <div className="rounded-lg border border-border bg-surface p-4">
             <h2 className="mb-3 text-sm font-medium text-text">Map Columns</h2>
             <div className="grid grid-cols-2 gap-3">
@@ -240,6 +275,7 @@ export function ImportWizard({ accounts }: { accounts: AccountOption[] }) {
                   <select
                     value={(mapping[f.key] as string | null) ?? ""}
                     onChange={(e) =>
+                      mapping &&
                       setMapping({
                         ...mapping,
                         [f.key]: e.target.value || null,
@@ -273,6 +309,7 @@ export function ImportWizard({ accounts }: { accounts: AccountOption[] }) {
               </label>
             </div>
           </div>
+          )}
 
           {parsed && (
             <div className="rounded-lg border border-border bg-surface p-4">
