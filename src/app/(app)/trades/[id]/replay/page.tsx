@@ -51,6 +51,11 @@ export default async function TradeReplayPage(props: PageProps<"/trades/[id]/rep
           side: trade.side,
           avgEntryPrice: trade.avgEntryPrice,
           avgExitPrice: trade.avgExitPrice,
+          symbol: trade.symbol,
+          quantity: trade.quantity,
+          netPnl: trade.netPnl,
+          netRoi: trade.netRoi,
+          executions: trade.executions,
         }}
       />
     </div>

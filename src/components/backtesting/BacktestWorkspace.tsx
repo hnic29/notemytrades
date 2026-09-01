@@ -41,6 +41,7 @@ export function BacktestWorkspace({
   shareSlug: initialShareSlug,
   candles,
   trades,
+  startingBalance,
 }: {
   sessionId: string;
   accountId: string;
@@ -49,6 +50,7 @@ export function BacktestWorkspace({
   shareSlug: string | null;
   candles: Candle[];
   trades: SessionTrade[];
+  startingBalance: number;
 }) {
   const router = useRouter();
   const [visibleCount, setVisibleCount] = useState(() => Math.min(50, candles.length));
@@ -213,6 +215,7 @@ export function BacktestWorkspace({
             <TradeControls
               currentCandle={currentCandle}
               openTrade={openTrade}
+              currentBalance={startingBalance + stats.netPnl}
               onOpen={handleOpen}
               onClose={handleClose}
             />

@@ -12,14 +12,21 @@ type OpenTrade = {
   avgEntryPrice: number;
 };
 
+const RISK_PRESETS = [0.5, 1, 2, 3, 5];
+
 export function TradeControls({
   currentCandle,
   openTrade,
+  currentBalance,
   onOpen,
   onClose,
 }: {
   currentCandle: Candle | null;
   openTrade: OpenTrade | null;
+  /** Account starting balance plus realized P&L so far — used to size
+   * quantity from a risk-% preset. Falls back to disabling the presets
+   * (rather than sizing off $0) when no account balance is known. */
+  currentBalance: number;
   onOpen: (input: {
     side: "long" | "short";
     quantity: number;
@@ -36,6 +43,24 @@ export function TradeControls({
   if (!currentCandle) {
     return <p className="text-sm text-text-faint">No candle loaded yet.</p>;
   }
+
+  const entry = currentCandle.close;
+  const stopNum = stopLoss === "" ? null : Number(stopLoss);
+  const targetNum = profitTarget === "" ? null : Number(profitTarget);
+  const riskPerShare = stopNum != null ? Math.abs(entry - stopNum) : null;
+  const rewardPerShare = targetNum != null ? Math.abs(targetNum - entry) : null;
+  const riskRewardRatio =
+    riskPerShare != null && riskPerShare > 0 && rewardPerShare != null
+      ? rewardPerShare / riskPerShare
+      : null;
+  const liveRiskDollars = riskPerShare != null ? riskPerShare * quantity : null;
+
+  const applyRiskPreset = (pct: number) => {
+    if (riskPerShare == null || riskPerShare <= 0 || currentBalance <= 0) return;
+    const riskDollars = currentBalance * (pct / 100);
+    const nextQty = Math.max(1, Math.floor(riskDollars / riskPerShare));
+    setQuantity(nextQty);
+  };
 
   const unrealized = openTrade
     ? (currentCandle.close - openTrade.avgEntryPrice) *
@@ -95,6 +120,36 @@ export function TradeControls({
               className="rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-sm text-text outline-none focus:border-accent"
             />
           </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs text-text-faint">Risk sizing:</span>
+            {RISK_PRESETS.map((pct) => (
+              <button
+                key={pct}
+                type="button"
+                disabled={riskPerShare == null || riskPerShare <= 0 || currentBalance <= 0}
+                onClick={() => applyRiskPreset(pct)}
+                title={
+                  riskPerShare == null
+                    ? "Set a stop first"
+                    : `Size quantity to risk ${pct}% of ${formatCurrency(currentBalance)}`
+                }
+                className="rounded-md border border-border-strong px-2 py-1 text-xs text-text-muted hover:border-accent/50 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {pct}%
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between rounded-md bg-surface-2 px-2.5 py-1.5 text-xs">
+            <span className="text-text-faint">
+              Risk: {liveRiskDollars != null ? formatCurrency(liveRiskDollars) : "—"}
+            </span>
+            <span className="text-text-faint">
+              R:R {riskRewardRatio != null ? `1 : ${riskRewardRatio.toFixed(2)}` : "—"}
+            </span>
+          </div>
+
           <div className="grid grid-cols-2 gap-2">
             <button
               disabled={isPending || quantity <= 0}

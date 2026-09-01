@@ -10,7 +10,10 @@ export async function listSessions() {
 export async function getSession(id: string) {
   return prisma.backtestSession.findUnique({
     where: { id },
-    include: { trades: { orderBy: { openedAt: "asc" } } },
+    include: {
+      trades: { orderBy: { openedAt: "asc" } },
+      account: { select: { startingBalance: true } },
+    },
   });
 }
 

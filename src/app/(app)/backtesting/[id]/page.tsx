@@ -39,6 +39,7 @@ export default async function BacktestSessionPage(props: PageProps<"/backtesting
         shareSlug={session.shareSlug}
         candles={candles}
         trades={session.trades}
+        startingBalance={session.account?.startingBalance ?? 0}
       />
     </div>
   );
