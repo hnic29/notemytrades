@@ -3,10 +3,10 @@ import { test, expect } from "@playwright/test";
 test("strategies: create with rules, attach a trade, stats reflect it", async ({ page }) => {
   await page.goto("/strategies/new");
   await page.locator('input[placeholder*="Opening Range"]').fill("E2E Strategy");
-  await page.getByRole("button", { name: "Add Group" }).click();
-  await page.locator('input[value="New Group"]').fill("Entry");
-  await page.getByRole("button", { name: "Add rule" }).click();
-  await page.locator('input[placeholder*="20 EMA"]').fill("Test rule");
+  // New strategies start pre-populated with Entry Rules/Exit Rules starter
+  // groups (each with one empty rule input) — fill the first rather than
+  // adding a group from scratch.
+  await page.locator('input[placeholder*="20 EMA"]').first().fill("Test rule");
   await page.getByRole("button", { name: "Create Strategy" }).click();
   await page.waitForURL(/\/strategies\/c[a-z0-9]+$/);
 
