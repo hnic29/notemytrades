@@ -242,10 +242,13 @@ export async function addTagToTrades(ids: string[], tagName: string) {
  * re-fill — use for correcting a batched import, not partial exits,
  * which are better modeled as extra Executions instead).
  */
-export async function splitTrade(id: string, keepQuantity: number) {
+export async function splitTrade(
+  id: string,
+  keepQuantity: number,
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const trade = await prisma.trade.findUniqueOrThrow({ where: { id } });
   if (keepQuantity <= 0 || keepQuantity >= trade.quantity) {
-    throw new Error("Split quantity must be between 0 and the trade quantity");
+    return { ok: false, error: "Split quantity must be between 0 and the trade quantity" };
   }
   const remainderQuantity = trade.quantity - keepQuantity;
 
@@ -302,6 +305,7 @@ export async function splitTrade(id: string, keepQuantity: number) {
   ]);
 
   revalidatePath("/trades");
+  return { ok: true };
 }
 
 /**
@@ -309,14 +313,16 @@ export async function splitTrade(id: string, keepQuantity: number) {
  * one, weighted-averaging entry/exit prices from their executions and
  * summing quantities/fees/commissions.
  */
-export async function mergeTrades(ids: string[]) {
-  if (ids.length < 2) throw new Error("Select at least two trades to merge");
+export async function mergeTrades(
+  ids: string[],
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (ids.length < 2) return { ok: false, error: "Select at least two trades to merge" };
 
   const trades = await prisma.trade.findMany({
     where: { id: { in: ids } },
     include: { executions: true },
   });
-  if (trades.length !== ids.length) throw new Error("Some trades were not found");
+  if (trades.length !== ids.length) return { ok: false, error: "Some trades were not found" };
 
   const [primary, ...rest] = trades;
   const sameGroup = trades.every(
@@ -326,7 +332,7 @@ export async function mergeTrades(ids: string[]) {
       t.side === primary.side,
   );
   if (!sameGroup) {
-    throw new Error("Trades must share the same account, symbol, and side to merge");
+    return { ok: false, error: "Trades must share the same account, symbol, and side to merge" };
   }
 
   const allExecutions = trades.flatMap((t) => t.executions);
@@ -383,4 +389,5 @@ export async function mergeTrades(ids: string[]) {
   ]);
 
   revalidatePath("/trades");
+  return { ok: true };
 }

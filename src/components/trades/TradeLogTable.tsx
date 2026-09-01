@@ -135,13 +135,20 @@ export function TradeLogTable({
     );
   };
 
-  const runBulk = (label: string, action: () => Promise<void>) => {
+  const runBulk = (
+    label: string,
+    action: () => Promise<{ ok: true } | { ok: false; error: string } | void>,
+  ) => {
     setError(null);
     setShowBulkMenu(false);
     setShowTransferMenu(false);
     startTransition(async () => {
       try {
-        await action();
+        const result = await action();
+        if (result && !result.ok) {
+          setError(result.error);
+          return;
+        }
         setSelected(new Set());
       } catch (e) {
         setError(e instanceof Error ? e.message : `Failed to ${label}`);
@@ -160,7 +167,8 @@ export function TradeLogTable({
     setError(null);
     startTransition(async () => {
       try {
-        await splitTrade(id, keepQuantity);
+        const result = await splitTrade(id, keepQuantity);
+        if (!result.ok) setError(result.error);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to split trade");
       }
