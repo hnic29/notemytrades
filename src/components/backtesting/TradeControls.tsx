@@ -86,7 +86,7 @@ export function TradeControls({
     : null;
 
   return (
-    <div className="rounded-lg border border-border bg-surface p-4">
+    <div data-testid="order-panel" className="rounded-lg border border-border bg-surface p-4">
       <div className="mb-3 flex items-center justify-between">
         <span className="text-sm text-text-muted">Current price</span>
         <span className="text-lg font-semibold text-text">

@@ -249,4 +249,27 @@ describe("backtesting actions", () => {
       }),
     ).rejects.toThrow(/starting balance/i);
   });
+
+  it("runAutoBacktest re-validates the rule and rejects a malformed one, even called directly (bypassing parseBacktestRule)", async () => {
+    const session = await actions.createSession({
+      name: "S",
+      symbol: "TSLA",
+      assetType: "stock",
+      timeframe: "1h",
+      startDate: "2026-01-01",
+      endDate: "2026-01-02",
+    });
+    // @ts-expect-error — deliberately malformed to prove the server
+    // action itself validates, not just the AI-parsing step upstream.
+    await expect(actions.runAutoBacktest(session.id, session.accountId!, "stock", { not: "a rule" })).rejects.toThrow();
+
+    await expect(
+      actions.runAutoBacktest(session.id, session.accountId!, "stock", {
+        side: "long",
+        entry: { left: { type: "price" }, comparison: "greater_than", right: { type: "value", value: 0 } },
+        exit: {}, // neither takeProfitPct nor stopLossPct — invalid per the schema's refine()
+        positionSizing: { type: "fixedQuantity", quantity: 1 },
+      }),
+    ).rejects.toThrow();
+  });
 });

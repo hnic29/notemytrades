@@ -9,7 +9,7 @@ import { checkAutoBreakeven, evaluateOrderFill } from "@/lib/backtesting/order-e
 import { getSessionCandles } from "@/lib/backtesting/session-candles";
 import { buildBacktestTradeCreateData } from "@/lib/backtesting/trade-factory";
 import { runRuleBacktest } from "@/lib/backtesting/rule-engine";
-import type { BacktestRule } from "@/lib/backtesting/rule-schema";
+import { BacktestRuleSchema, type BacktestRule } from "@/lib/backtesting/rule-schema";
 import type { Candle, Timeframe } from "@/lib/market-data/yahoo";
 
 export async function createSession(input: {
@@ -288,10 +288,17 @@ export async function runAutoBacktest(
   assetType: string,
   rule: BacktestRule,
 ): Promise<{ tradesCreated: number }> {
+  // parseBacktestRule (src/lib/actions/ai.ts) already validates AI output
+  // before the UI ever shows it to the user, but this action is itself a
+  // Server Action reachable directly with any payload, bypassing that —
+  // re-validate here, at the point the rule actually drives real trade
+  // creation, rather than trusting the caller.
+  const validRule = BacktestRuleSchema.parse(rule);
+
   const session = await prisma.backtestSession.findUniqueOrThrow({ where: { id: sessionId } });
 
   const account = await prisma.account.findUniqueOrThrow({ where: { id: accountId } });
-  if (rule.positionSizing.type === "riskPercent" && account.startingBalance <= 0) {
+  if (validRule.positionSizing.type === "riskPercent" && account.startingBalance <= 0) {
     throw new Error(
       "Set a starting balance above before running a risk-%-sized auto-backtest — quantity can't be sized from a $0 balance.",
     );
@@ -302,7 +309,7 @@ export async function runAutoBacktest(
     throw new Error("No candle data available for this session's symbol/timeframe/date range.");
   }
 
-  const result = runRuleBacktest(candles, rule, account.startingBalance);
+  const result = runRuleBacktest(candles, validRule, account.startingBalance);
   if (result.trades.length === 0) {
     return { tradesCreated: 0 };
   }
@@ -376,4 +383,29 @@ export async function runAutoBacktest(
 export async function setBacktestStartingBalance(accountId: string, startingBalance: number) {
   await prisma.account.update({ where: { id: accountId }, data: { startingBalance } });
   revalidatePath("/backtesting");
+}
+
+/**
+ * Fetches a full (non-replay-clipped) candle set for the session's
+ * symbol/date-range at a different bar interval, for the chart's
+ * timeframe switcher — a read-only "look at a higher/lower timeframe
+ * for context" view. Deliberately doesn't touch the session's own
+ * `timeframe` field or its trades: replay position, pending orders,
+ * and auto-breakeven all stay anchored to the session's native
+ * timeframe regardless of what the chart is currently displaying.
+ */
+export async function getContextCandles(
+  symbol: string,
+  assetType: string,
+  timeframe: Timeframe,
+  startDate: string,
+  endDate: string,
+): Promise<Candle[]> {
+  return getSessionCandles({
+    symbol,
+    assetType,
+    timeframe,
+    startDate: new Date(startDate),
+    endDate: new Date(endDate),
+  });
 }

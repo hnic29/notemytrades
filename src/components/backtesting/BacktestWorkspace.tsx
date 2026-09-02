@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Link2, Link2Off, CheckCircle2, Download, Trash2 } from "lucide-react";
-import { BacktestChart } from "./BacktestChart";
+import { BacktestChart, type ChartDrawing } from "./BacktestChart";
 import { BacktestRuleBuilder } from "@/components/ai/BacktestRuleBuilder";
 import { BacktestSummary } from "@/components/ai/BacktestSummary";
 import { PendingOrdersPanel } from "./PendingOrdersPanel";
@@ -19,11 +19,13 @@ import {
   deleteSession,
   evaluateCandleForSession,
   generateSessionShareLink,
+  getContextCandles,
   placeBacktestTrade,
   placePendingOrder,
   revokeSessionShareLink,
   setBacktestStartingBalance,
 } from "@/lib/actions/backtesting";
+import { clearDrawings, createDrawing, type DrawingInput } from "@/lib/actions/chart-drawings";
 import { EquityCurveChart } from "@/components/dashboard/EquityCurveChart";
 import { computeDetailedStats } from "@/lib/analytics/detailed-stats";
 import { bySide, byHourOfDay, computeRiskMetrics } from "@/lib/analytics/grouping";
@@ -32,7 +34,7 @@ import { computeDrawdown, computeEquityCurve, computeSummaryStats } from "@/lib/
 import { toReportTrades } from "@/lib/backtesting/report-adapters";
 import { downloadCsv } from "@/lib/csv";
 import { formatCurrency, formatDateTime, formatPercent } from "@/lib/format";
-import type { Candle } from "@/lib/market-data/yahoo";
+import { TIMEFRAME_OPTIONS, type Candle, type Timeframe } from "@/lib/market-data/yahoo";
 import { cn } from "@/lib/utils";
 
 type SessionTrade = {
@@ -70,11 +72,13 @@ export function BacktestWorkspace({
   accountId,
   symbol,
   assetType,
+  timeframe,
   status,
   shareSlug: initialShareSlug,
   candles,
   trades,
   pendingOrders,
+  drawings,
   startingBalance,
   startDate,
   endDate,
@@ -83,11 +87,13 @@ export function BacktestWorkspace({
   accountId: string;
   symbol: string;
   assetType: string;
+  timeframe: string;
   status: string;
   shareSlug: string | null;
   candles: Candle[];
   trades: SessionTrade[];
   pendingOrders: PendingOrder[];
+  drawings: ChartDrawing[];
   startingBalance: number;
   startDate: Date;
   endDate: Date;
@@ -98,6 +104,9 @@ export function BacktestWorkspace({
   const [speed, setSpeed] = useState(1);
   const [shareSlug, setShareSlug] = useState(initialShareSlug);
   const [copied, setCopied] = useState(false);
+  const [chartTimeframe, setChartTimeframe] = useState<Timeframe>(timeframe as Timeframe);
+  const [contextCandles, setContextCandles] = useState<Candle[] | null>(null);
+  const [isLoadingContext, setIsLoadingContext] = useState(false);
 
   useEffect(() => {
     if (!playing) return;
@@ -212,6 +221,42 @@ export function BacktestWorkspace({
     router.refresh();
   };
 
+  // Changing the chart's timeframe is a read-only "look at a different
+  // bar interval for context" view — it never touches the session's own
+  // timeframe, so replay position, pending orders, and auto-breakeven
+  // all stay anchored to the original candles regardless of what's
+  // currently on screen.
+  const handleTimeframeChange = async (tf: Timeframe) => {
+    setChartTimeframe(tf);
+    if (tf === (timeframe as Timeframe)) {
+      setContextCandles(null);
+      return;
+    }
+    setIsLoadingContext(true);
+    try {
+      const result = await getContextCandles(
+        symbol,
+        assetType,
+        tf,
+        startDate.toISOString(),
+        endDate.toISOString(),
+      );
+      setContextCandles(result);
+    } finally {
+      setIsLoadingContext(false);
+    }
+  };
+
+  const handleCreateDrawing = async (input: DrawingInput) => {
+    await createDrawing(sessionId, input);
+    router.refresh();
+  };
+
+  const handleClearDrawings = async () => {
+    await clearDrawings(sessionId);
+    router.refresh();
+  };
+
   const handleClose = async () => {
     if (!currentCandle || !openTrade) return;
     await closeBacktestTrade(openTrade.id, sessionId, {
@@ -308,62 +353,64 @@ export function BacktestWorkspace({
         />
       </div>
 
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <SmallStat
-          label="Expectancy"
-          value={formatCurrency(detailedStats.expectancy)}
-          tone={detailedStats.expectancy >= 0 ? "profit" : "loss"}
-        />
-        <SmallStat
-          label="Avg R-Multiple"
-          value={riskMetrics.avgRMultiple != null ? `${riskMetrics.avgRMultiple.toFixed(2)}R` : "—"}
-        />
-        <SmallStat label="Max Drawdown" value={formatPercent(maxDrawdownPct)} tone="loss" />
-        <SmallStat
-          label="Best Hour"
-          value={bestHour ? `${bestHour.label} (${formatCurrency(bestHour.stats.netPnl)})` : "—"}
-        />
-      </div>
-
-      <div className="mb-4 grid grid-cols-3 gap-3">
-        <SmallStat
-          label="Sharpe (daily)"
-          value={riskRatios.sharpe != null ? riskRatios.sharpe.toFixed(2) : "—"}
-        />
-        <SmallStat
-          label="Sortino (daily)"
-          value={riskRatios.sortino != null ? riskRatios.sortino.toFixed(2) : "—"}
-        />
-        <SmallStat
-          label="Calmar"
-          value={riskRatios.calmar != null ? riskRatios.calmar.toFixed(2) : "—"}
-        />
-      </div>
-      {(riskRatios.sharpe == null || riskRatios.sortino == null || riskRatios.calmar == null) && (
-        <p className="mb-4 text-xs text-text-faint">
-          Sharpe/Sortino/Calmar need a starting balance and at least 5 distinct trading days of
-          closed trades to calculate — set a starting balance above and keep trading the session.
-        </p>
-      )}
-
-      {sideBreakdown.length > 1 && (
-        <div className="mb-4 grid grid-cols-2 gap-3">
-          {sideBreakdown.map((s) => (
-            <SmallStat
-              key={s.key}
-              label={`${s.label === "long" ? "Long" : "Short"} Win Rate`}
-              value={s.stats.winRate != null ? formatPercent(s.stats.winRate) : "—"}
-            />
-          ))}
+      <div data-testid="analytics-section">
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <SmallStat
+            label="Expectancy"
+            value={formatCurrency(detailedStats.expectancy)}
+            tone={detailedStats.expectancy >= 0 ? "profit" : "loss"}
+          />
+          <SmallStat
+            label="Avg R-Multiple"
+            value={riskMetrics.avgRMultiple != null ? `${riskMetrics.avgRMultiple.toFixed(2)}R` : "—"}
+          />
+          <SmallStat label="Max Drawdown" value={formatPercent(maxDrawdownPct)} tone="loss" />
+          <SmallStat
+            label="Best Hour"
+            value={bestHour ? `${bestHour.label} (${formatCurrency(bestHour.stats.netPnl)})` : "—"}
+          />
         </div>
-      )}
 
-      {equityCurve.length >= 2 && (
-        <div className="mb-4 rounded-lg border border-border bg-surface p-4">
-          <h3 className="mb-2 text-xs font-medium text-text-muted">Equity Curve</h3>
-          <EquityCurveChart data={equityCurve} />
+        <div className="mb-4 grid grid-cols-3 gap-3">
+          <SmallStat
+            label="Sharpe (daily)"
+            value={riskRatios.sharpe != null ? riskRatios.sharpe.toFixed(2) : "—"}
+          />
+          <SmallStat
+            label="Sortino (daily)"
+            value={riskRatios.sortino != null ? riskRatios.sortino.toFixed(2) : "—"}
+          />
+          <SmallStat
+            label="Calmar"
+            value={riskRatios.calmar != null ? riskRatios.calmar.toFixed(2) : "—"}
+          />
         </div>
-      )}
+        {(riskRatios.sharpe == null || riskRatios.sortino == null || riskRatios.calmar == null) && (
+          <p className="mb-4 text-xs text-text-faint">
+            Sharpe/Sortino/Calmar need a starting balance and at least 5 distinct trading days of
+            closed trades to calculate — set a starting balance above and keep trading the session.
+          </p>
+        )}
+
+        {sideBreakdown.length > 1 && (
+          <div className="mb-4 grid grid-cols-2 gap-3">
+            {sideBreakdown.map((s) => (
+              <SmallStat
+                key={s.key}
+                label={`${s.label === "long" ? "Long" : "Short"} Win Rate`}
+                value={s.stats.winRate != null ? formatPercent(s.stats.winRate) : "—"}
+              />
+            ))}
+          </div>
+        )}
+
+        {equityCurve.length >= 2 && (
+          <div className="mb-4 rounded-lg border border-border bg-surface p-4">
+            <h3 className="mb-2 text-xs font-medium text-text-muted">Equity Curve</h3>
+            <EquityCurveChart data={equityCurve} />
+          </div>
+        )}
+      </div>
 
       <div className="mb-4 rounded-lg border border-border bg-surface p-4">
         {candles.length === 0 ? (
@@ -371,7 +418,40 @@ export function BacktestWorkspace({
             No chart data available for this symbol/timeframe/date range.
           </p>
         ) : (
-          <BacktestChart candles={visibleCandles} trades={trades} />
+          <>
+            <div className="mb-2 flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-text-faint">Timeframe:</span>
+              {TIMEFRAME_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  disabled={isLoadingContext}
+                  onClick={() => handleTimeframeChange(opt.value)}
+                  className={cn(
+                    "rounded-md border px-2 py-1 text-xs disabled:opacity-50",
+                    chartTimeframe === opt.value
+                      ? "border-accent bg-accent/10 text-accent"
+                      : "border-border-strong text-text-muted hover:border-accent/50",
+                  )}
+                >
+                  {opt.value}
+                </button>
+              ))}
+              {contextCandles != null && (
+                <span className="text-xs text-text-faint">
+                  (viewing full range for context — replay stays on {timeframe})
+                </span>
+              )}
+              {isLoadingContext && <span className="text-xs text-text-faint">Loading…</span>}
+            </div>
+            <BacktestChart
+              candles={contextCandles ?? visibleCandles}
+              trades={trades}
+              drawings={drawings}
+              onCreateDrawing={handleCreateDrawing}
+              onClearDrawings={handleClearDrawings}
+            />
+          </>
         )}
       </div>
 
@@ -425,7 +505,7 @@ export function BacktestWorkspace({
 
       <BacktestSummary sessionId={sessionId} />
 
-      <div>
+      <div data-testid="trades-table">
         <h2 className="mb-3 text-sm font-medium text-text-muted">
           Trades in this session ({trades.length})
         </h2>

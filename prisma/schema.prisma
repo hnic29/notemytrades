@@ -302,8 +302,27 @@ model BacktestSession {
   shareSlug     String?  @unique
   createdAt     DateTime @default(now())
 
-  trades Trade[]
-  orders BacktestOrder[]
+  trades   Trade[]
+  orders   BacktestOrder[]
+  drawings ChartDrawing[]
+}
+
+// A user-drawn chart annotation. "horizontal" only uses price1 (a
+// price level, no time). "trendline" uses both points. Times are unix
+// seconds so a drawing renders correctly on any timeframe's chart —
+// the price/time axes are continuous, not tied to a specific bar grid.
+model ChartDrawing {
+  id        String          @id @default(cuid())
+  sessionId String
+  session   BacktestSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  type      String // "horizontal" | "trendline"
+  time1     Int?
+  price1    Float
+  time2     Int?
+  price2    Float?
+  createdAt DateTime        @default(now())
+
+  @@index([sessionId])
 }
 
 // A limit/stop order the replay engine hasn't triggered yet. Kept

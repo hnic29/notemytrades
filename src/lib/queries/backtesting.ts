@@ -13,6 +13,7 @@ export async function getSession(id: string) {
     include: {
       trades: { orderBy: { openedAt: "asc" }, include: { tags: { include: { tag: true } } } },
       orders: { where: { status: "pending" }, orderBy: { createdAt: "asc" } },
+      drawings: { orderBy: { createdAt: "asc" } },
       account: { select: { startingBalance: true } },
     },
   });
@@ -21,6 +22,9 @@ export async function getSession(id: string) {
 export async function getSessionByShareSlug(slug: string) {
   return prisma.backtestSession.findUnique({
     where: { shareSlug: slug },
-    include: { trades: { orderBy: { openedAt: "asc" } } },
+    include: {
+      trades: { orderBy: { openedAt: "asc" } },
+      drawings: { orderBy: { createdAt: "asc" } },
+    },
   });
 }

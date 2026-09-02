@@ -9,7 +9,15 @@ const SINGLETON_ID = "singleton";
 
 export async function updateAiSettings(input: {
   aiBaseUrl: string;
-  aiApiKey: string;
+  /**
+   * `undefined` leaves the stored key untouched — the Settings form
+   * never receives the real saved key back from the server (see
+   * `getSettings`'s caller in the Settings page), so an empty field
+   * there means "not retyped," not "clear it." Onboarding and the
+   * explicit "Clear key" action both pass a real string (possibly
+   * `""`) to set it outright.
+   */
+  aiApiKey?: string;
   aiModel: string;
 }) {
   await getSettings(); // ensure the row exists
@@ -17,7 +25,7 @@ export async function updateAiSettings(input: {
     where: { id: SINGLETON_ID },
     data: {
       aiBaseUrl: input.aiBaseUrl.trim() || null,
-      aiApiKey: input.aiApiKey.trim() || null,
+      ...(input.aiApiKey !== undefined ? { aiApiKey: input.aiApiKey.trim() || null } : {}),
       aiModel: input.aiModel.trim() || null,
     },
   });

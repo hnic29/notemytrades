@@ -25,7 +25,7 @@ export function PendingOrdersPanel({
   if (orders.length === 0) return null;
 
   return (
-    <div className="mb-4 rounded-lg border border-border bg-surface p-3">
+    <div data-testid="pending-orders-panel" className="mb-4 rounded-lg border border-border bg-surface p-3">
       <h3 className="mb-2 text-xs font-medium text-text-muted">
         Pending Orders ({orders.length})
       </h3>

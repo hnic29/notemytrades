@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useActiveNav } from "./useActiveNav";
+import { Logo } from "./Logo";
 import { NavLinks } from "./NavLinks";
 
 export function Sidebar() {
@@ -14,9 +15,7 @@ export function Sidebar() {
         onClick={() => setOptimisticHref("/dashboard")}
         className="flex h-14 items-center gap-2 border-b border-border px-4 hover:bg-surface-2"
       >
-        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-accent text-sm font-bold text-accent-fg">
-          N
-        </div>
+        <Logo className="h-[44px] w-[44px] shrink-0 object-contain" />
         <span className="text-sm font-semibold tracking-tight text-text">
           Note My Trades
         </span>

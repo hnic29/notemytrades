@@ -14,6 +14,7 @@ import {
   Search,
 } from "lucide-react";
 import { createAccount } from "@/lib/actions/accounts";
+import { Logo } from "@/components/layout/Logo";
 import {
   updateAiSettings,
   testAiConnection,
@@ -152,9 +153,7 @@ export function OnboardingWizard({
 
         {step === 0 && (
           <div className="text-center">
-            <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-accent text-2xl font-bold text-accent-fg">
-              N
-            </div>
+            <Logo className="mx-auto mb-5 h-[88px] w-[88px] object-contain" />
             <h1 className="mb-2 text-2xl font-semibold text-text">Welcome to Note My Trades</h1>
             <p className="mx-auto mb-6 max-w-sm text-sm text-text-muted">
               A self-hosted trading journal — no subscription, your data stays on your machine.

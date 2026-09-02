@@ -21,7 +21,7 @@ export default async function SettingsPage() {
         </p>
         <AiSettingsForm
           initialBaseUrl={settings.aiBaseUrl ?? ""}
-          initialApiKey={settings.aiApiKey ?? ""}
+          hasApiKey={Boolean(settings.aiApiKey)}
           initialModel={settings.aiModel ?? ""}
         />
       </section>

@@ -56,7 +56,7 @@ export function TradingViewSettings({ initialPort }: { initialPort: number }) {
   };
 
   return (
-    <div className="max-w-xl space-y-4">
+    <div data-testid="tradingview-sync-section" className="max-w-xl space-y-4">
       <label className="block">
         <span className="mb-1 block text-sm font-medium text-text">Remote debugging port</span>
         <input

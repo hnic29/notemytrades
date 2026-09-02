@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
 import { useActiveNav } from "./useActiveNav";
+import { Logo } from "./Logo";
 import { NavLinks } from "./NavLinks";
 
 /** Hamburger top bar + slide-in drawer, shown only below the `md`
@@ -31,9 +32,7 @@ export function MobileNav() {
     <div className="md:hidden">
       <div className="flex h-14 items-center justify-between border-b border-border bg-surface px-4">
         <Link href="/dashboard" className="flex items-center gap-2" onClick={() => handleNavigate("/dashboard")}>
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-accent text-sm font-bold text-accent-fg">
-            N
-          </div>
+          <Logo className="h-[44px] w-[44px] shrink-0 object-contain" />
           <span className="text-sm font-semibold tracking-tight text-text">Note My Trades</span>
         </Link>
         <button
@@ -50,7 +49,10 @@ export function MobileNav() {
           <div className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} />
           <div className="relative flex h-full w-72 max-w-[80vw] flex-col border-r border-border bg-surface">
             <div className="flex h-14 items-center justify-between border-b border-border px-4">
-              <span className="text-sm font-semibold tracking-tight text-text">Note My Trades</span>
+              <span className="flex items-center gap-2 text-sm font-semibold tracking-tight text-text">
+                <Logo className="h-[38px] w-[38px] shrink-0 object-contain" />
+                Note My Trades
+              </span>
               <button
                 onClick={() => setOpen(false)}
                 aria-label="Close navigation menu"

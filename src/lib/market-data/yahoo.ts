@@ -60,7 +60,7 @@ export async function fetchDailyOhlc(
 
 export type Candle = { time: number; open: number; high: number; low: number; close: number };
 
-export type Timeframe = "1m" | "5m" | "15m" | "1h" | "1d";
+export type Timeframe = "1m" | "5m" | "15m" | "1h" | "1d" | "1wk" | "1mo";
 
 /** Yahoo's actual limits on how far back each interval will return data
  * (approximate — enforced server-side, not by us). Shown in the UI so
@@ -71,6 +71,8 @@ export const TIMEFRAME_OPTIONS: { value: Timeframe; label: string; maxRangeDays:
   { value: "15m", label: "15 minutes", maxRangeDays: 60 },
   { value: "1h", label: "1 hour", maxRangeDays: 730 },
   { value: "1d", label: "1 day", maxRangeDays: 36500 },
+  { value: "1wk", label: "1 week", maxRangeDays: 36500 },
+  { value: "1mo", label: "1 month", maxRangeDays: 36500 },
 ];
 
 /**

@@ -6,15 +6,19 @@ import { updateAiSettings, testAiConnection, listAiModels } from "@/lib/actions/
 
 export function AiSettingsForm({
   initialBaseUrl,
-  initialApiKey,
+  hasApiKey,
   initialModel,
 }: {
   initialBaseUrl: string;
-  initialApiKey: string;
+  /** Whether a key is currently saved — the real key is never sent to
+   * the client, so this is all the form has to go on until the user
+   * types a new one. */
+  hasApiKey: boolean;
   initialModel: string;
 }) {
   const [baseUrl, setBaseUrl] = useState(initialBaseUrl);
-  const [apiKey, setApiKey] = useState(initialApiKey);
+  const [apiKey, setApiKey] = useState("");
+  const [keySaved, setKeySaved] = useState(hasApiKey);
   const [model, setModel] = useState(initialModel);
   const [saved, setSaved] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -23,10 +27,17 @@ export function AiSettingsForm({
   const [isSaving, startSaving] = useTransition();
   const [isTesting, startTesting] = useTransition();
   const [isScanning, startScanning] = useTransition();
+  const [isClearing, startClearing] = useTransition();
+
+  // An empty field means "leave the saved key as-is" (undefined) — the
+  // field never holds the real key to begin with, so empty can't mean
+  // "the user wants to blank it out." Clearing has its own explicit button.
+  const keyForSave = () => (apiKey.trim() === "" ? undefined : apiKey);
 
   const save = () => {
     startSaving(async () => {
-      await updateAiSettings({ aiBaseUrl: baseUrl, aiApiKey: apiKey, aiModel: model });
+      await updateAiSettings({ aiBaseUrl: baseUrl, aiApiKey: keyForSave(), aiModel: model });
+      if (apiKey.trim() !== "") setKeySaved(true);
       setSaved(true);
       setTestResult(null);
       setTimeout(() => setSaved(false), 1500);
@@ -35,7 +46,8 @@ export function AiSettingsForm({
 
   const test = () => {
     startTesting(async () => {
-      await updateAiSettings({ aiBaseUrl: baseUrl, aiApiKey: apiKey, aiModel: model });
+      await updateAiSettings({ aiBaseUrl: baseUrl, aiApiKey: keyForSave(), aiModel: model });
+      if (apiKey.trim() !== "") setKeySaved(true);
       const result = await testAiConnection();
       setTestResult(
         result.ok
@@ -50,7 +62,8 @@ export function AiSettingsForm({
       setScanError(null);
       setModels(null);
       // Scan against whatever's currently typed, not just what's saved.
-      await updateAiSettings({ aiBaseUrl: baseUrl, aiApiKey: apiKey, aiModel: model });
+      await updateAiSettings({ aiBaseUrl: baseUrl, aiApiKey: keyForSave(), aiModel: model });
+      if (apiKey.trim() !== "") setKeySaved(true);
       const result = await listAiModels();
       if (result.ok) {
         setModels(result.models);
@@ -60,6 +73,15 @@ export function AiSettingsForm({
       } else {
         setScanError(result.error);
       }
+    });
+  };
+
+  const clearKey = () => {
+    startClearing(async () => {
+      await updateAiSettings({ aiBaseUrl: baseUrl, aiApiKey: "", aiModel: model });
+      setApiKey("");
+      setKeySaved(false);
+      setTestResult(null);
     });
   };
 
@@ -73,14 +95,33 @@ export function AiSettingsForm({
           className={inputClass}
         />
       </Field>
-      <Field label="API Key" hint="Leave blank if your gateway doesn't require auth.">
-        <input
-          type="password"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          placeholder="(none)"
-          className={inputClass}
-        />
+      <Field
+        label="API Key"
+        hint={
+          keySaved
+            ? "A key is saved. Leave this blank to keep it, or type a new one to replace it."
+            : "Leave blank if your gateway doesn't require auth."
+        }
+      >
+        <div className="flex gap-2">
+          <input
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder={keySaved ? "•••••••• (saved — leave blank to keep)" : "(none)"}
+            className={inputClass}
+          />
+          {keySaved && (
+            <button
+              type="button"
+              onClick={clearKey}
+              disabled={isClearing}
+              className="shrink-0 rounded-md border border-border-strong px-3 py-2 text-sm text-text-muted hover:bg-surface-2 disabled:opacity-50"
+            >
+              {isClearing ? "Clearing…" : "Clear"}
+            </button>
+          )}
+        </div>
       </Field>
       <Field
         label="Model"

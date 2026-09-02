@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getStrategyByShareSlug, parseRules } from "@/lib/queries/strategies";
 import { computeSummaryStats } from "@/lib/analytics/stats";
 import { RulesChecklist } from "@/components/strategies/RulesChecklist";
+import { Logo } from "@/components/layout/Logo";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -19,9 +20,7 @@ export default async function SharedStrategyPage(props: PageProps<"/s/strategies
     <div className="min-h-screen bg-bg text-text">
       <div className="mx-auto max-w-2xl px-4 py-10">
         <div className="mb-6 flex items-center gap-2 text-sm text-text-faint">
-          <div className="flex h-6 w-6 items-center justify-center rounded bg-accent text-xs font-bold text-accent-fg">
-            N
-          </div>
+          <Logo className="h-[38px] w-[38px] shrink-0 object-contain" />
           Shared from Note My Trades
         </div>
 

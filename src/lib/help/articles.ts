@@ -1,5 +1,7 @@
 export type HelpArticle = {
   slug: string;
+  /** Path under /public — a real screenshot of the feature this article covers. */
+  screenshot: string;
   title: string;
   section: string;
   summary: string;
@@ -15,6 +17,7 @@ export type HelpArticle = {
 export const HELP_ARTICLES: HelpArticle[] = [
   {
     slug: "dashboard",
+    screenshot: "/help-screenshots/dashboard.png",
     title: "Dashboard",
     section: "Getting Started",
     summary: "A configurable home screen of widgets summarizing recent performance.",
@@ -26,6 +29,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "daily-journal",
+    screenshot: "/help-screenshots/daily-journal.png",
     title: "Daily Journal",
     section: "Getting Started",
     summary: "One free-form note per calendar day for pre-market plans, session recaps, or lessons.",
@@ -36,6 +40,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "trade-log",
+    screenshot: "/help-screenshots/trade-log.png",
     title: "Trade Log",
     section: "Journaling",
     summary: "The full list of your live trades — add, edit, import, tag, split, merge, and export.",
@@ -51,6 +56,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "notebook",
+    screenshot: "/help-screenshots/notebook.png",
     title: "Notebook",
     section: "Journaling",
     summary: "Rich-text notes organized into folders, optionally linked to a specific trade.",
@@ -62,6 +68,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "reports-overview",
+    screenshot: "/help-screenshots/reports-overview.png",
     title: "Reports: Overview",
     section: "Analysis",
     summary: "The main performance dashboard: summary stats, an AI insight, equity curve, and a calendar.",
@@ -72,6 +79,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "reports-day-time",
+    screenshot: "/help-screenshots/reports-day-time.png",
     title: "Reports: Day & Time",
     section: "Analysis",
     summary: "Performance broken down by day of week and hour of day.",
@@ -81,6 +89,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "reports-symbol",
+    screenshot: "/help-screenshots/reports-symbol.png",
     title: "Reports: Symbol",
     section: "Analysis",
     summary: "Performance grouped by traded symbol.",
@@ -90,6 +99,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "reports-win-loss",
+    screenshot: "/help-screenshots/reports-win-loss.png",
     title: "Reports: Win vs Losses",
     section: "Analysis",
     summary: "A distribution of trade outcomes by P&L size.",
@@ -99,6 +109,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "reports-tags",
+    screenshot: "/help-screenshots/reports-tags.png",
     title: "Reports: Tags",
     section: "Analysis",
     summary: "Performance grouped by the tags you've attached to trades.",
@@ -109,6 +120,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "reports-playbook",
+    screenshot: "/help-screenshots/reports-playbook.png",
     title: "Reports: Playbook",
     section: "Analysis",
     summary: "Performance grouped by assigned Strategy.",
@@ -118,6 +130,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "reports-risk",
+    screenshot: "/help-screenshots/reports-risk.png",
     title: "Reports: Risk",
     section: "Analysis",
     summary: "Planned risk, reward-to-risk, R-multiple, and drawdown.",
@@ -128,6 +141,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "reports-options",
+    screenshot: "/help-screenshots/reports-options.png",
     title: "Reports: Options",
     section: "Analysis",
     summary: "Options-specific performance breakdowns.",
@@ -137,6 +151,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "reports-compare",
+    screenshot: "/help-screenshots/reports-compare.png",
     title: "Reports: Compare",
     section: "Analysis",
     summary: "Side-by-side comparison across accounts.",
@@ -146,6 +161,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "strategies",
+    screenshot: "/help-screenshots/strategies.png",
     title: "Strategies",
     section: "Analysis",
     summary: "Playbooks with entry/exit rules, assignable to trades, plus a missed-trades log.",
@@ -158,6 +174,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "strategy-templates",
+    screenshot: "/help-screenshots/strategy-templates.png",
     title: "Strategy Templates",
     section: "Analysis",
     summary: "Ready-to-run starter playbooks, filterable by asset class — pick one, tweak it, save it.",
@@ -170,6 +187,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "progress-tracker",
+    screenshot: "/help-screenshots/progress-tracker.png",
     title: "Progress Tracker",
     section: "Journaling",
     summary: "Custom trading rules you check off per-trade or per-day, with pass/fail history.",
@@ -180,6 +198,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "prop-accounts",
+    screenshot: "/help-screenshots/prop-accounts.png",
     title: "Prop Accounts",
     section: "Journaling",
     summary: "Tracks a prop-firm challenge/verification/funded account's rules, fees, and payouts.",
@@ -191,6 +210,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "backtesting",
+    screenshot: "/help-screenshots/backtesting.png",
     title: "Backtesting & Replay",
     section: "Backtesting",
     summary: "Practice trading against historical candles, with playback, an order panel, and full analytics.",
@@ -208,6 +228,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "ai-insights",
+    screenshot: "/help-screenshots/ai-insights.png",
     title: "AI Insights",
     section: "AI",
     summary: "A chat assistant with context on your trades, plus AI-generated report summaries.",
@@ -219,6 +240,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "settings",
+    screenshot: "/help-screenshots/settings.png",
     title: "Settings",
     section: "Settings",
     summary: "AI connection, accounts, data export/reset, and TradingView Desktop sync.",
@@ -232,6 +254,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "settings-tradingview-sync",
+    screenshot: "/help-screenshots/settings-tradingview-sync.png",
     title: "Settings: TradingView Desktop Sync",
     section: "Settings",
     summary: "Import Paper Trading fills straight from a running TradingView Desktop app.",
@@ -244,6 +267,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "backtesting-orders",
+    screenshot: "/help-screenshots/backtesting-orders.png",
     title: "Backtesting: Order Panel & Risk Sizing",
     section: "Backtesting",
     summary: "Market, limit, and stop orders, risk-% position sizing, and auto-breakeven.",
@@ -257,6 +281,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "backtesting-analytics",
+    screenshot: "/help-screenshots/backtesting-analytics.png",
     title: "Backtesting: Analytics",
     section: "Backtesting",
     summary: "Sharpe/Sortino/Calmar, expectancy, R-multiple, drawdown, best trade times, and CSV export.",
@@ -270,6 +295,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "backtesting-journaling",
+    screenshot: "/help-screenshots/backtesting-journaling.png",
     title: "Backtesting: Journaling Backtest Trades",
     section: "Backtesting",
     summary: "Tag, note, and replay backtest trades exactly like live ones.",
@@ -281,6 +307,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "backtesting-ai",
+    screenshot: "/help-screenshots/backtesting-ai.png",
     title: "Backtesting: AI Auto-Backtesting",
     section: "Backtesting",
     summary: "Describe a simple rule in plain English; it runs deterministically across the whole session.",

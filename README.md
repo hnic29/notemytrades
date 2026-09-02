@@ -1,36 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Note My Trades
+
+A self-hosted trading journal, backtester, and analytics app. Single-user by
+design — there's no login, no multi-tenant data separation, and no
+subscription. Your data lives in a local SQLite file under `data/`.
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+`npm run build && npm start` runs a production build the same way.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Network exposure — read this before running it on shared Wi-Fi
 
-## Learn More
+`npm run dev` / `npm start` bind to `127.0.0.1` (localhost) only, by
+design — the app has no authentication, so anything that can reach it
+has full read/write/delete access to your journal, can trigger AI
+requests using your saved API key, can export your entire database in
+one request, and (if TradingView Desktop sync is configured) can launch
+TradingView Desktop on this machine.
 
-To learn more about Next.js, take a look at the following resources:
+If you deliberately want to reach it from another device on your own
+network (e.g. a phone on the same Wi-Fi), use:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run dev:lan
+# or
+npm run start:lan
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Only do this on a network you trust — anyone else on it gets the same
+full access you do. Don't do this on a network you don't control (a
+café, a shared office, a hotel), and don't port-forward this app to the
+public internet without adding your own authentication in front of it.
 
-## Deploy on Vercel
+## Stack
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Next.js (App Router) · Prisma + SQLite · Tailwind. See `AGENTS.md` for
+notes on the project's Next.js version quirks.

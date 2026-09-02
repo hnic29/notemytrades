@@ -83,7 +83,7 @@ export function BacktestRuleBuilder({
   };
 
   return (
-    <div className="mb-6 rounded-lg border border-border bg-surface p-4">
+    <div data-testid="ai-auto-backtest-panel" className="mb-6 rounded-lg border border-border bg-surface p-4">
       <h3 className="mb-2 text-sm font-medium text-text-muted">AI Auto-Backtest</h3>
       <p className="mb-3 text-xs text-text-faint">
         Describe a simple rule — one entry condition, a %-based stop/target — and it runs

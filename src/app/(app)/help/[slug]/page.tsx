@@ -17,6 +17,20 @@ export default async function HelpArticlePage(props: PageProps<"/help/[slug]">) 
         <span>{article.section}</span>
       </div>
       <h1 className="mb-4 text-2xl font-semibold text-text">{article.title}</h1>
+
+      <div className="mb-5 overflow-hidden rounded-lg border border-border bg-surface">
+        {/* Real screenshots at varying natural aspect ratios (full page vs.
+            a cropped UI section) — next/image would force a fixed
+            width/height aspect ratio via CSS and distort the crops, so a
+            plain img sized off its own intrinsic dimensions is correct here. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={article.screenshot}
+          alt={`Screenshot of the ${article.title} feature`}
+          className="block w-full"
+        />
+      </div>
+
       <div className="space-y-3 text-sm leading-relaxed text-text-muted">{renderBody(article.body)}</div>
     </div>
   );
