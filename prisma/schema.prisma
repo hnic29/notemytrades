@@ -284,7 +284,43 @@ model AppSettings {
   aiModel         String?
   // Remote-debugging port TradingView Desktop was launched with (default 9222).
   tradingViewPort Int?
+  // Which BrokerFeeProfile the Take-Home page currently applies —
+  // stored as a plain id, not a relation, so deleting a profile can't
+  // ever cascade into (or be blocked by) this singleton settings row.
+  selectedBrokerProfileId String?
+  // Optional, user-supplied — this app never asserts a tax rate on its
+  // own; if set, it's purely arithmetic on top of the broker-fee
+  // estimate, clearly labeled as the user's own number, not advice.
+  taxSetAsidePct  Float?
   updatedAt       DateTime  @updatedAt
+}
+
+// A broker's per-transaction cost structure, applied to real trade
+// history to estimate what a trade would have actually cost — most
+// useful for TradingView Paper Trading fills, which carry $0 recorded
+// commissions since nothing real was charged. Per-unit fees are always
+// PER SIDE (one fill), not round-turn — a closed trade is 2 sides
+// (entry + exit), an open one is 1 — so the same field works whether a
+// broker's own pricing page quotes per-side or round-turn (round-turn
+// numbers get halved when entered here; see `notes`/`sourceUrl` for
+// provenance). Fee fields are typed nullable rather than defaulting to
+// 0 specifically so "this broker doesn't publish a rate for this
+// asset class" (null) stays distinguishable from "confirmed $0 / free"
+// (0) — the Take-Home calculation treats those two cases differently.
+model BrokerFeeProfile {
+  id                    String    @id @default(cuid())
+  name                  String    @unique
+  isCustom              Boolean   @default(false)
+  perContractFeeFutures Float? // $ per futures contract per side, all-in (broker + exchange/NFA fees) unless notes say otherwise
+  perContractFeeOptions Float? // $ per options contract per side
+  perShareFeeStock      Float? // $ per share per side — 0 for commission-free brokers, not null
+  minFeePerOrder        Float? // minimum $ charged per order, if the broker has one
+  monthlyPlatformFee    Float? // reference only — not amortized into any per-trade calculation
+  sourceUrl             String?
+  feesAsOf              DateTime? // when this schedule was verified against the broker's own pricing page
+  notes                 String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 }
 
 model BacktestSession {

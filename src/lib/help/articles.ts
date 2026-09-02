@@ -320,6 +320,21 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "At most one position is open at a time, so the engine can't pyramid into an existing position or run multiple signals concurrently.",
     ],
   },
+  {
+    slug: "take-home",
+    screenshot: "/help-screenshots/take-home.png",
+    title: "Take-Home",
+    section: "Take-Home",
+    summary: "What your trades actually cost, broken down by day/week/month/year.",
+    body: [
+      "Take-Home exists because a raw P&L number lies by omission: TradingView Paper Trading fills carry $0 recorded commissions, so a $1,000 winning day looks like $1,000 you'd actually keep — but no real broker charges nothing. This page applies a real broker's published per-transaction fees to your trade history so the number you see is closer to what you'd actually take home.",
+      "Pick your broker from the dropdown — profiles are researched from each broker's own pricing page (source link and \"as of\" date shown under the dropdown once selected). Don't see your broker, or your account is on a different plan/tier? Click \"Add custom broker\" to enter your own rates.",
+      "Real recorded fees always win: if a trade already has a commission on it (e.g. from a CSV import with real fee data), that real number is used as-is. The broker profile only fills in the gap for trades showing $0 — exactly what Paper Trading fills look like. A trade whose asset type isn't covered by the selected broker (forex/crypto aren't modeled — those typically cost via spread, not a per-transaction fee) is called out separately rather than silently ignored.",
+      "Fees are applied per side, not round-turn — a closed trade is charged for both its entry and its exit, a still-open one only its entry — so the same rate works whether a broker quotes per-side or round-turn pricing (round-turn numbers are halved when entered as a custom broker).",
+      "The optional \"set aside for taxes\" percentage is entirely your own number, arithmetic only — this app never asserts or looks up a tax rate for you. It's applied only to a positive take-home figure, never used to reduce a loss further.",
+      "None of this is tax or financial advice. Broker pricing changes — verify the current rate on the broker's own page (linked under the dropdown) before relying on these figures for anything real.",
+    ],
+  },
 ];
 
 export const HELP_SECTIONS = Array.from(new Set(HELP_ARTICLES.map((a) => a.section)));

@@ -41,6 +41,29 @@ export async function getOrCreateBacktestAccount() {
   });
 }
 
+/**
+ * Case-insensitive, trimmed name collision check across every account
+ * (archived ones too — an archived duplicate is still confusing if
+ * it's ever unarchived, or just forgotten about). This is exactly the
+ * gap that let a second "Main Account" get created silently and split
+ * synced trades across two accounts without anyone noticing — see the
+ * "trades tripled" incident this was added after.
+ */
+async function assertUniqueAccountName(name: string, excludeId?: string) {
+  const trimmed = name.trim().toLowerCase();
+  // SQLite's Prisma connector doesn't support `mode: "insensitive"`
+  // (that's Postgres/MongoDB only) — the account list is always small
+  // for a single-user app, so comparing in JS is simpler than fighting
+  // SQLite collations.
+  const accounts = await prisma.account.findMany({ select: { id: true, name: true, archived: true } });
+  const clash = accounts.find((a) => a.id !== excludeId && a.name.trim().toLowerCase() === trimmed);
+  if (clash) {
+    throw new Error(
+      `An account named "${name.trim()}" already exists${clash.archived ? " (archived)" : ""} — pick a different name, or use that existing account instead.`,
+    );
+  }
+}
+
 export async function createAccount(input: {
   name: string;
   broker?: string;
@@ -48,6 +71,7 @@ export async function createAccount(input: {
   currency?: string;
   startingBalance?: number;
 }) {
+  await assertUniqueAccountName(input.name);
   const account = await prisma.account.create({
     data: {
       name: input.name,
@@ -71,6 +95,7 @@ export async function updateAccount(
     startingBalance?: number;
   },
 ) {
+  await assertUniqueAccountName(input.name, id);
   const account = await prisma.account.update({
     where: { id },
     data: {

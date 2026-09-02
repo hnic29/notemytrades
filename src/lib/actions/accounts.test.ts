@@ -74,4 +74,27 @@ describe("accounts actions", () => {
     const all = await actions.listAllAccounts();
     expect(all.find((a) => a.id === account.id)).toBeUndefined();
   });
+
+  it("createAccount rejects a name that already exists, case-insensitively", async () => {
+    await actions.createAccount({ name: "Duplicate Guard" });
+    await expect(actions.createAccount({ name: "duplicate guard" })).rejects.toThrow(/already exists/i);
+  });
+
+  it("createAccount still blocks against an archived account with the same name", async () => {
+    const archived = await actions.createAccount({ name: "Old Archived" });
+    await actions.setAccountArchived(archived.id, true);
+    await expect(actions.createAccount({ name: "Old Archived" })).rejects.toThrow(/already exists/i);
+  });
+
+  it("updateAccount allows keeping an account's own name, but not colliding with another", async () => {
+    const a = await actions.createAccount({ name: "Keep Mine" });
+    const b = await actions.createAccount({ name: "The Other One" });
+
+    // Renaming to its own current name is a no-op, not a collision.
+    await expect(actions.updateAccount(a.id, { name: "Keep Mine" })).resolves.toBeTruthy();
+
+    // Renaming to another account's name is blocked.
+    await expect(actions.updateAccount(a.id, { name: "The Other One" })).rejects.toThrow(/already exists/i);
+    void b;
+  });
 });

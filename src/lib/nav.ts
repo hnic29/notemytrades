@@ -10,6 +10,7 @@ import {
   Building2,
   History,
   Sparkles,
+  PiggyBank,
 } from "lucide-react";
 
 export type NavItem = {
@@ -28,5 +29,6 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Progress Tracker", href: "/progress", icon: Target },
   { label: "Prop Accounts", href: "/prop-accounts", icon: Building2 },
   { label: "Backtesting & Replay", href: "/backtesting", icon: History },
+  { label: "Take-Home", href: "/take-home", icon: PiggyBank },
   { label: "AI Insights", href: "/ai", icon: Sparkles },
 ];

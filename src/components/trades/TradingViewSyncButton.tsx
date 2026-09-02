@@ -14,6 +14,14 @@ import { cn } from "@/lib/utils";
 
 type AccountOption = { id: string; name: string };
 
+/** Which account the last successful (or attempted) sync targeted —
+ * remembered per browser so re-opening the dialog defaults to the
+ * account you actually meant, instead of silently falling back to
+ * whichever account happens to load first. That silent fallback is
+ * exactly how the same Paper Trading data ended up synced into three
+ * different accounts before this existed. */
+const LAST_SYNC_ACCOUNT_KEY = "tradingview-sync-last-account-id";
+
 /**
  * "Sync from TradingView": one click pulls Paper Trading's fills
  * straight out of the running TradingView Desktop — no export, no
@@ -38,8 +46,34 @@ export function TradingViewSyncButton({
   const [isSyncing, startSync] = useTransition();
   const [isLaunching, startLaunch] = useTransition();
 
+  const openDialog = () => {
+    try {
+      const remembered = localStorage.getItem(LAST_SYNC_ACCOUNT_KEY);
+      if (remembered && accounts.some((a) => a.id === remembered)) {
+        setAccountId(remembered);
+      }
+    } catch {
+      // Private browsing / storage disabled — fall back to the default.
+    }
+    setOpen(true);
+  };
+
+  const rememberAccount = (id: string) => {
+    try {
+      localStorage.setItem(LAST_SYNC_ACCOUNT_KEY, id);
+    } catch {
+      // Non-fatal — just means it won't be remembered next time.
+    }
+  };
+
+  const chooseAccount = (id: string) => {
+    setAccountId(id);
+    rememberAccount(id);
+  };
+
   const sync = () => {
     if (!accountId) return;
+    rememberAccount(accountId);
     setLaunchNote(null);
     startSync(async () => {
       const r = await syncFromTradingView(accountId);
@@ -49,6 +83,7 @@ export function TradingViewSyncButton({
   };
 
   const launch = () => {
+    if (accountId) rememberAccount(accountId);
     setLaunchNote(null);
     startLaunch(async () => {
       const r = await launchTradingViewDesktop();
@@ -84,7 +119,7 @@ export function TradingViewSyncButton({
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={openDialog}
         className={cn(
           "flex items-center gap-1.5 rounded-md px-3 py-2 text-sm",
           variant === "primary"
@@ -128,7 +163,7 @@ export function TradingViewSyncButton({
                   <span className="mb-1 block text-xs font-medium text-text-muted">Into account</span>
                   <select
                     value={accountId}
-                    onChange={(e) => setAccountId(e.target.value)}
+                    onChange={(e) => chooseAccount(e.target.value)}
                     disabled={busy}
                     className="w-full rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-text"
                   >

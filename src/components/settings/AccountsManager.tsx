@@ -46,9 +46,11 @@ export function AccountsManager({ accounts }: { accounts: Account[] }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const startEdit = (a: Account) => {
+    setError(null);
     setEditingId(a.id);
     setDraft({
       name: a.name,
@@ -60,20 +62,30 @@ export function AccountsManager({ accounts }: { accounts: Account[] }) {
   };
 
   const saveEdit = (id: string) => {
+    setError(null);
     startTransition(async () => {
-      await updateAccount(id, draft);
-      setEditingId(null);
-      router.refresh();
+      try {
+        await updateAccount(id, draft);
+        setEditingId(null);
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to save account");
+      }
     });
   };
 
   const saveNew = () => {
     if (!draft.name.trim()) return;
+    setError(null);
     startTransition(async () => {
-      await createAccount(draft);
-      setCreating(false);
-      setDraft(emptyDraft);
-      router.refresh();
+      try {
+        await createAccount(draft);
+        setCreating(false);
+        setDraft(emptyDraft);
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to create account");
+      }
     });
   };
 
@@ -85,10 +97,14 @@ export function AccountsManager({ accounts }: { accounts: Account[] }) {
             key={a.id}
             draft={draft}
             setDraft={setDraft}
-            onCancel={() => setEditingId(null)}
+            onCancel={() => {
+              setEditingId(null);
+              setError(null);
+            }}
             onSave={() => saveEdit(a.id)}
             saving={isPending}
             saveLabel="Save"
+            error={error}
           />
         ) : (
           <div
@@ -166,10 +182,12 @@ export function AccountsManager({ accounts }: { accounts: Account[] }) {
           onCancel={() => {
             setCreating(false);
             setDraft(emptyDraft);
+            setError(null);
           }}
           onSave={saveNew}
           saving={isPending}
           saveLabel="Add Account"
+          error={error}
         />
       ) : (
         <button
@@ -193,6 +211,7 @@ function AccountFormRow({
   onSave,
   saving,
   saveLabel,
+  error,
 }: {
   draft: Draft;
   setDraft: (d: Draft) => void;
@@ -200,9 +219,13 @@ function AccountFormRow({
   onSave: () => void;
   saving: boolean;
   saveLabel: string;
+  error?: string | null;
 }) {
   return (
     <div className="space-y-2 rounded-md border border-accent/40 bg-surface p-3">
+      {error && (
+        <div className="rounded-md border border-loss/40 bg-loss-bg px-3 py-2 text-sm text-loss">{error}</div>
+      )}
       <div className="grid grid-cols-2 gap-2">
         <input
           value={draft.name}
