@@ -24,6 +24,18 @@ export type ParseResult = {
   warnings?: string[];
   /** Asset type the parser is confident about (e.g. futures from a CME symbol). */
   suggestedAssetType?: string;
+  /** What each dropped file turned out to be, so the user never has to sort them. */
+  files?: FileRole[];
+};
+
+export type FileRole = {
+  name: string;
+  /** Human label, e.g. "Order history". */
+  role: string;
+  /** Whether the importer read anything from it. */
+  used: boolean;
+  /** Short note, e.g. "250 orders" or "not needed". */
+  note?: string;
 };
 
 /** One parsed CSV as handed to an aggregate importer. */

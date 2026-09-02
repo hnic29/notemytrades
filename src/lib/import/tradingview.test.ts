@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import Papa from "papaparse";
 import type { ImportFile } from "./common";
-import { aggregateTradingViewPaper, isBalanceHistory, isOrderHistory, isPositions } from "./tradingview";
+import {
+  aggregateTradingViewPaper,
+  classifyTradingViewFile,
+  isBalanceHistory,
+  isOrderHistory,
+  isPositions,
+} from "./tradingview";
 import { detectAggregateFormat } from "./csv";
 
 const csv = (name: string, text: string): ImportFile => {
@@ -47,6 +53,24 @@ Time,Balance before,Balance after,Realized PnL (value),Realized PnL (currency),A
 `,
 );
 
+// The two exports that carry nothing the importer needs, but that a
+// user handing over "all the files" will include.
+const OPEN_ORDERS = csv(
+  "paper-trading-orders-all.csv",
+  `
+Symbol,Side,Type,Quantity,Limit price,Stop price,Fill price,Take profit,Stop loss,Instruction,Status,Placing time,Order ID,Level ID,Expiry,Leverage,Margin
+CME_MINI:MNQ1!,Buy,Take Profit,1,29077,,,,,,Working,2026-09-01 20:57:34,3479744464,,2026-11-01 19:57:34,,
+`,
+);
+
+const ACTIVITY = csv(
+  "paper-trading-activity-log.csv",
+  `
+Time,Text
+2026-09-01 20:57:34,Order 3479744464 successfully placed
+`,
+);
+
 describe("TradingView paper trading detection", () => {
   it("recognizes each of the three useful exports", () => {
     expect(isOrderHistory(ORDERS.headers)).toBe(true);
@@ -55,10 +79,64 @@ describe("TradingView paper trading detection", () => {
     expect(isOrderHistory(BALANCE.headers)).toBe(false);
   });
 
-  it("is registered as an aggregate preset for any of the three files", () => {
-    for (const f of [ORDERS, POSITIONS, BALANCE]) {
+  it("tells the open-orders export apart from the order history despite the shared columns", () => {
+    expect(isOrderHistory(OPEN_ORDERS.headers)).toBe(false);
+    expect(classifyTradingViewFile(OPEN_ORDERS.headers)).toBe("open-orders");
+    expect(classifyTradingViewFile(ACTIVITY.headers)).toBe("activity-log");
+    expect(classifyTradingViewFile(["Symbol", "Qty", "Price"])).toBeNull();
+  });
+
+  it("is registered as an aggregate preset for any of the five files", () => {
+    for (const f of [ORDERS, POSITIONS, BALANCE, OPEN_ORDERS, ACTIVITY]) {
       expect(detectAggregateFormat(f.headers)?.id).toBe("tradingview-paper");
     }
+  });
+});
+
+describe("aggregateTradingViewPaper with everything the export produced", () => {
+  it("uses the three that matter, ignores the rest, and says which is which", () => {
+    // Deliberately in an unhelpful order: the ignorable ones first.
+    const r = aggregateTradingViewPaper([ACTIVITY, OPEN_ORDERS, BALANCE, ORDERS, POSITIONS]);
+    expect(r.trades.map((t) => t.netPnl)).toEqual([15, 0.5]);
+    expect(r.suggestedAssetType).toBe("futures");
+    expect(r.files).toEqual([
+      { name: ACTIVITY.name, role: "Activity log", used: false, note: "not needed — ignored" },
+      { name: OPEN_ORDERS.name, role: "Open orders", used: false, note: "not needed — ignored" },
+      { name: BALANCE.name, role: "Balance history", used: true, note: "4 closes to verify against" },
+      { name: ORDERS.name, role: "Order history", used: true, note: "6 fills" },
+      { name: POSITIONS.name, role: "Positions", used: true, note: "1 open" },
+    ]);
+  });
+
+  it("labels a file that isn't from TradingView at all", () => {
+    const stray = csv("random.csv", "Symbol,Qty,Price\nAAPL,1,2\n");
+    const r = aggregateTradingViewPaper([ORDERS, POSITIONS, stray]);
+    expect(r.trades).toHaveLength(2);
+    expect(r.files?.find((f) => f.name === "random.csv")).toMatchObject({ role: "Unrecognized", used: false });
+  });
+
+  it("merges overlapping exports of the same kind without double counting", () => {
+    // An earlier export whose window overlaps the later one: the two
+    // early fills appear in both, and its positions snapshot is stale.
+    const earlierOrders = csv(
+      "paper-trading-order-history-all-2026-09-01T03_27_00.000Z.csv",
+      ORDERS.headers.join(",") + "\n" + ORDERS.rows.slice(3).map((r) => ORDERS.headers.map((h) => JSON.stringify(r[h] ?? "")).join(",")).join("\n"),
+    );
+    const earlierPositions = csv(
+      "paper-trading-positions-2026-09-01T03_27_00.000Z.csv",
+      POSITIONS.headers.join(",") + "\nCME_MINI:MNQ1!,Short,1,29198.5,,,29198,1,USD,0.00%,x,x,20x,x,\n",
+    );
+    const laterOrders = { ...ORDERS, name: "paper-trading-order-history-all-2026-09-02T02_58_23.667Z.csv" };
+    const laterPositions = { ...POSITIONS, name: "paper-trading-positions-2026-09-02T02_58_23.656Z.csv" };
+
+    const r = aggregateTradingViewPaper([earlierOrders, earlierPositions, laterOrders, laterPositions, BALANCE]);
+    expect(r.errors).toEqual([]);
+    expect(r.trades.map((t) => t.netPnl)).toEqual([15, 0.5]);
+    expect((r.warnings ?? []).some((w) => w.includes("doesn't match"))).toBe(false);
+    expect(r.files?.find((f) => f.name === earlierPositions.name)).toMatchObject({
+      used: false,
+      note: "older snapshot — the most recent one is used",
+    });
   });
 });
 

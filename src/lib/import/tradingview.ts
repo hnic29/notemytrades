@@ -1,5 +1,5 @@
 import type { TradeSide } from "@/lib/trade-math";
-import { hasHeader, parseDate, parseNumber, type ImportFile, type ParseResult } from "./common";
+import { hasHeader, parseDate, parseNumber, type FileRole, type ImportFile, type ParseResult } from "./common";
 import { getFuturesPointValue, parseTradingViewSymbol } from "./futures";
 import { pairExecutions, type PairingExec, type SeedLot } from "./pairing";
 
@@ -21,9 +21,14 @@ import { pairExecutions, type PairingExec, type SeedLot } from "./pairing";
  *    to verify every computed P&L, and as the multiplier source of
  *    truth for the symbols it mentions.
  *
- * The activity log and open-orders exports carry nothing extra.
+ * The activity log and open-orders exports carry nothing extra, but
+ * they're recognized so the user can hand over the whole export
+ * folder without sorting it.
  */
 
+// Open orders ("orders-all") shares most of order history's columns —
+// what sets order history apart is the Closing time, and what sets
+// open orders apart is the Instruction/Expiry pair.
 export const isOrderHistory = (h: string[]) =>
   hasHeader(h, "Symbol") &&
   hasHeader(h, "Side") &&
@@ -31,7 +36,19 @@ export const isOrderHistory = (h: string[]) =>
   hasHeader(h, "Fill price") &&
   hasHeader(h, "Status") &&
   hasHeader(h, "Placing time") &&
-  hasHeader(h, "Order ID");
+  hasHeader(h, "Closing time") &&
+  hasHeader(h, "Order ID") &&
+  !hasHeader(h, "Instruction");
+
+export const isOpenOrders = (h: string[]) =>
+  hasHeader(h, "Symbol") &&
+  hasHeader(h, "Side") &&
+  hasHeader(h, "Quantity") &&
+  hasHeader(h, "Status") &&
+  hasHeader(h, "Placing time") &&
+  hasHeader(h, "Order ID") &&
+  (hasHeader(h, "Instruction") || hasHeader(h, "Expiry")) &&
+  !hasHeader(h, "Closing time");
 
 export const isBalanceHistory = (h: string[]) =>
   hasHeader(h, "Time") &&
@@ -46,8 +63,34 @@ export const isPositions = (h: string[]) =>
   hasHeader(h, "Avg fill price") &&
   hasHeader(h, "Unrealized PnL (value)");
 
-export const isTradingViewPaperFile = (h: string[]) =>
-  isOrderHistory(h) || isBalanceHistory(h) || isPositions(h);
+export const isActivityLog = (h: string[]) =>
+  h.length === 2 && hasHeader(h, "Time") && hasHeader(h, "Text");
+
+export type TradingViewFileKind =
+  | "order-history"
+  | "positions"
+  | "balance-history"
+  | "open-orders"
+  | "activity-log";
+
+export function classifyTradingViewFile(h: string[]): TradingViewFileKind | null {
+  if (isOrderHistory(h)) return "order-history";
+  if (isPositions(h)) return "positions";
+  if (isBalanceHistory(h)) return "balance-history";
+  if (isOpenOrders(h)) return "open-orders";
+  if (isActivityLog(h)) return "activity-log";
+  return null;
+}
+
+export const isTradingViewPaperFile = (h: string[]) => classifyTradingViewFile(h) != null;
+
+const KIND_LABELS: Record<TradingViewFileKind, string> = {
+  "order-history": "Order history",
+  positions: "Positions",
+  "balance-history": "Balance history",
+  "open-orders": "Open orders",
+  "activity-log": "Activity log",
+};
 
 type BalanceClose = {
   rowNum: number;
@@ -232,23 +275,100 @@ function seedPrice(
 
 const fmt = (n: number) => n.toFixed(2);
 
-export function aggregateTradingViewPaper(files: ImportFile[]): ParseResult {
-  const orderFile = files.find((f) => isOrderHistory(f.headers));
-  const balanceFile = files.find((f) => isBalanceHistory(f.headers));
-  const positionsFile = files.find((f) => isPositions(f.headers));
+/** TradingView stamps every export with the moment it was taken. */
+const EXPORT_STAMP = /(\d{4}-\d{2}-\d{2})T(\d{2})_(\d{2})_(\d{2})/;
+function exportStamp(name: string): string | null {
+  const m = EXPORT_STAMP.exec(name);
+  return m ? `${m[1]}T${m[2]}:${m[3]}:${m[4]}` : null;
+}
 
-  if (!orderFile) {
+/**
+ * Several exports of the same kind (say, one taken each week) are
+ * merged into one, keeping a single copy of any row that appears in
+ * more than one — which is what overlapping windows produce.
+ */
+function mergeFiles(files: ImportFile[], key: (row: Record<string, string>) => string): ImportFile {
+  if (files.length === 1) return files[0];
+  const seen = new Set<string>();
+  const rows: Record<string, string>[] = [];
+  for (const f of files) {
+    for (const row of f.rows) {
+      const k = key(row);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      rows.push(row);
+    }
+  }
+  return { name: files.map((f) => f.name).join(" + "), headers: files[0].headers, rows };
+}
+
+/** The positions file taken last is the one that pairs with the merged order window. */
+function latestFile(files: ImportFile[]): ImportFile {
+  return [...files].sort((a, b) => (exportStamp(a.name) ?? "").localeCompare(exportStamp(b.name) ?? "")).at(-1)!;
+}
+
+function describeFiles(files: ImportFile[], picked: { positions: ImportFile | null }) {
+  return files.map((f): FileRole => {
+    const kind = classifyTradingViewFile(f.headers);
+    if (!kind) return { name: f.name, role: "Unrecognized", used: false, note: "not a TradingView export — ignored" };
+    const role = KIND_LABELS[kind];
+    switch (kind) {
+      case "order-history": {
+        const filled = f.rows.filter((r) => r["Status"]?.trim().toLowerCase() === "filled").length;
+        return { name: f.name, role, used: true, note: `${filled} fill${filled === 1 ? "" : "s"}` };
+      }
+      case "positions": {
+        if (picked.positions !== f) {
+          return { name: f.name, role, used: false, note: "older snapshot — the most recent one is used" };
+        }
+        const n = f.rows.length;
+        return { name: f.name, role, used: true, note: n === 0 ? "flat at export time" : `${n} open` };
+      }
+      case "balance-history": {
+        const n = f.rows.filter((r) => CLOSE_ACTION.test((r["Action"] ?? "").trim())).length;
+        return { name: f.name, role, used: true, note: `${n} close${n === 1 ? "" : "s"} to verify against` };
+      }
+      default:
+        return { name: f.name, role, used: false, note: "not needed — ignored" };
+    }
+  });
+}
+
+export function aggregateTradingViewPaper(files: ImportFile[]): ParseResult {
+  const orderFiles = files.filter((f) => isOrderHistory(f.headers));
+  const balanceFiles = files.filter((f) => isBalanceHistory(f.headers));
+  const positionsFiles = files.filter((f) => isPositions(f.headers));
+  const positionsFile = positionsFiles.length > 0 ? latestFile(positionsFiles) : null;
+  const fileRoles = describeFiles(files, { positions: positionsFile });
+
+  if (orderFiles.length === 0) {
     return {
       trades: [],
       errors: [],
       warnings: [
-        "Add the TradingView order history export (paper-trading-order-history-…csv) — the balance history and positions files only supplement it.",
+        "The order history export (paper-trading-order-history-…csv) is the one that holds your fills — add it. The other TradingView files only supplement it.",
       ],
+      files: fileRoles,
     };
   }
 
+  const orderFile = mergeFiles(orderFiles, (r) => r["Order ID"] ?? JSON.stringify(r));
+  const balanceFile =
+    balanceFiles.length > 0 ? mergeFiles(balanceFiles, (r) => `${r["Time"]}|${r["Action"]}`) : null;
+
   const { execs, errors, assetTypes } = parseFills(orderFile);
   const warnings: string[] = [];
+
+  if (positionsFile && orderFiles.length > 1) {
+    // Merged windows are only exact if the positions snapshot is from
+    // the end of the latest one.
+    const latestOrders = latestFile(orderFiles);
+    if (exportStamp(latestOrders.name) !== exportStamp(positionsFile.name)) {
+      warnings.push(
+        "The positions file wasn't exported at the same time as the most recent order history; the starting position may be off. Export positions and order history together.",
+      );
+    }
+  }
 
   const balance = balanceFile ? parseBalanceCloses(balanceFile) : null;
   if (balance) errors.push(...balance.errors);
@@ -341,5 +461,5 @@ export function aggregateTradingViewPaper(files: ImportFile[]): ParseResult {
   const types = new Set([...assetTypes.values()].filter(Boolean));
   const suggestedAssetType = types.size === 1 ? [...types][0]! : undefined;
 
-  return { trades: paired.trades, errors, warnings, suggestedAssetType };
+  return { trades: paired.trades, errors, warnings, suggestedAssetType, files: fileRoles };
 }

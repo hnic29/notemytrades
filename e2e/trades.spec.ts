@@ -30,10 +30,10 @@ test("manual trade: create, view detail, share, edit, delete", async ({ page }) 
 
 test("CSV import: maps columns and imports valid rows", async ({ page }) => {
   await page.goto("/trades/import");
-  await page.setInputFiles(
-    'input[type="file"]',
-    path.join(__dirname, "fixtures", "sample-trades.csv"),
-  );
+  await page
+    .locator('input[type="file"]')
+    .first()
+    .setInputFiles(path.join(__dirname, "fixtures", "sample-trades.csv"));
   await page.waitForSelector("text=Map Columns");
   await expect(page.getByText(/3 trades ready/)).toBeVisible();
   await expect(page.getByText(/1 row skipped/)).toBeVisible();
@@ -51,15 +51,20 @@ test("CSV import: maps columns and imports valid rows", async ({ page }) => {
 test("TradingView paper trading: multi-file import pairs fills, then skips duplicates on re-import", async ({
   page,
 }) => {
-  const files = ["order-history-all", "positions", "balance-history"].map((f) =>
-    path.join(__dirname, "fixtures", "tradingview", `paper-trading-${f}.csv`),
+  // Everything TradingView's export produces, handed over without sorting.
+  const files = ["activity-log", "orders-all", "order-history-all", "positions", "balance-history"].map(
+    (f) => path.join(__dirname, "fixtures", "tradingview", `paper-trading-${f}.csv`),
   );
 
   await page.goto("/trades/import");
-  await page.setInputFiles('input[type="file"]', files);
+  await page.locator('input[type="file"]').first().setInputFiles(files);
 
   await expect(page.getByText("Detected: TradingView Paper Trading")).toBeVisible();
   await expect(page.getByText("Map Columns")).not.toBeVisible();
+  await expect(page.getByText("Order history", { exact: true })).toBeVisible();
+  await expect(page.getByText("Positions", { exact: true })).toBeVisible();
+  await expect(page.getByText("Balance history", { exact: true })).toBeVisible();
+  await expect(page.getByText("not needed — ignored")).toHaveCount(2);
   await expect(page.getByText(/2 trades ready/)).toBeVisible();
   // Continuous contract collapsed to its root, asset type picked up from the exchange.
   await expect(page.getByLabel("Asset Type")).toHaveValue("futures");
@@ -72,7 +77,7 @@ test("TradingView paper trading: multi-file import pairs fills, then skips dupli
 
   // Same three files again: nothing new, nothing duplicated.
   await page.goto("/trades/import");
-  await page.setInputFiles('input[type="file"]', files);
+  await page.locator('input[type="file"]').first().setInputFiles(files);
   await page.getByRole("button", { name: /Import \d+ Trades/ }).click();
   await expect(page.getByText("Nothing new to import")).toBeVisible();
   await expect(page.getByText(/2 already in this account/)).toBeVisible();

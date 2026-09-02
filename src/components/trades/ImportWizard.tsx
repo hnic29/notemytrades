@@ -11,6 +11,7 @@ import {
   mapCsvRows,
   type AggregatePreset,
   type ColumnMapping,
+  type FileRole,
   type ImportFile,
   type ParseResult,
 } from "@/lib/import/csv";
@@ -35,6 +36,42 @@ const REQUIRED_FIELDS: { key: keyof ColumnMapping; label: string; optional?: boo
 
 const ASSET_TYPES = ["stock", "futures", "forex", "crypto", "option"];
 
+const isCsv = (f: File) => /\.csv$/i.test(f.name) || f.type === "text/csv";
+
+/**
+ * Everything dropped onto the zone, with folders walked recursively so
+ * a whole export folder can be dragged in as one gesture. Falls back to
+ * the plain file list where the entries API isn't available.
+ */
+async function filesFromDrop(dt: DataTransfer): Promise<File[]> {
+  const entries = Array.from(dt.items ?? [])
+    .map((item) => (typeof item.webkitGetAsEntry === "function" ? item.webkitGetAsEntry() : null))
+    .filter((e): e is FileSystemEntry => e != null);
+  if (entries.length === 0) return Array.from(dt.files);
+
+  const out: File[] = [];
+  const walk = async (entry: FileSystemEntry): Promise<void> => {
+    if (entry.isFile) {
+      const file = await new Promise<File>((resolve, reject) =>
+        (entry as FileSystemFileEntry).file(resolve, reject),
+      );
+      out.push(file);
+    } else if (entry.isDirectory) {
+      const reader = (entry as FileSystemDirectoryEntry).createReader();
+      // readEntries hands back batches; keep going until an empty one.
+      for (;;) {
+        const batch = await new Promise<FileSystemEntry[]>((resolve, reject) =>
+          reader.readEntries(resolve, reject),
+        );
+        if (batch.length === 0) break;
+        for (const e of batch) await walk(e);
+      }
+    }
+  };
+  for (const e of entries) await walk(e);
+  return out;
+}
+
 export function ImportWizard({ accounts }: { accounts: AccountOption[] }) {
   const router = useRouter();
   const [files, setFiles] = useState<ImportFile[]>([]);
@@ -46,6 +83,7 @@ export function ImportWizard({ accounts }: { accounts: AccountOption[] }) {
   const [isPending, startTransition] = useTransition();
   const [importResult, setImportResult] = useState<BulkImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
 
   const account = accounts.find((a) => a.id === accountId);
   // Column-mapped formats are single-file; the first one dropped is it.
@@ -66,9 +104,16 @@ export function ImportWizard({ accounts }: { accounts: AccountOption[] }) {
 
   const handleFiles = async (incoming: File[]) => {
     setError(null);
+    // Only CSVs are worth parsing; a dragged-in folder brings whatever
+    // else lives there along for the ride.
+    const csvs = incoming.filter(isCsv).filter((f) => !files.some((p) => p.name === f.name));
+    if (csvs.length === 0) {
+      if (incoming.length > 0 && files.length === 0) setError("No CSV files found in what you dropped.");
+      return;
+    }
     let parsedFiles: ImportFile[];
     try {
-      parsedFiles = await Promise.all(incoming.map(parseFile));
+      parsedFiles = await Promise.all(csvs.map(parseFile));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not read file");
       return;
@@ -214,23 +259,52 @@ export function ImportWizard({ accounts }: { accounts: AccountOption[] }) {
   return (
     <div className="max-w-3xl space-y-6">
       {files.length === 0 && (
-        <label className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed border-border-strong py-16 text-center hover:border-accent/50">
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={async (e) => {
+            e.preventDefault();
+            setDragging(false);
+            handleFiles(await filesFromDrop(e.dataTransfer));
+          }}
+          className={cn(
+            "flex flex-col items-center gap-3 rounded-lg border-2 border-dashed py-14 text-center transition-colors",
+            dragging ? "border-accent bg-accent/5" : "border-border-strong",
+          )}
+        >
           <Upload className="h-8 w-8 text-text-faint" />
-          <span className="text-sm text-text-muted">
-            Click to choose CSV files exported from your broker
-          </span>
-          <span className="text-xs text-text-faint">
-            TradingView paper trading: select the order history, positions, and balance history
-            exports together
-          </span>
-          <input
-            type="file"
-            accept=".csv,text/csv"
-            multiple
-            className="hidden"
-            onChange={(e) => e.target.files && handleFiles(Array.from(e.target.files))}
-          />
-        </label>
+          <p className="text-sm text-text">Drop your broker export files here</p>
+          <p className="max-w-md text-xs text-text-faint">
+            Select everything the export gave you — files are recognized by their contents, the
+            ones that aren&apos;t needed are ignored, and trades already in your journal are never
+            duplicated.
+          </p>
+          <div className="mt-2 flex items-center gap-3">
+            <label className="cursor-pointer rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:bg-accent-strong">
+              Choose files
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                multiple
+                className="hidden"
+                onChange={(e) => e.target.files && handleFiles(Array.from(e.target.files))}
+              />
+            </label>
+            <label className="cursor-pointer rounded-md border border-border px-4 py-2 text-sm text-text-muted hover:border-border-strong hover:text-text">
+              Choose a folder
+              <input
+                type="file"
+                multiple
+                className="hidden"
+                {...({ webkitdirectory: "" } as object)}
+                onChange={(e) => e.target.files && handleFiles(Array.from(e.target.files))}
+              />
+            </label>
+          </div>
+        </div>
       )}
 
       {error && (
@@ -242,24 +316,35 @@ export function ImportWizard({ accounts }: { accounts: AccountOption[] }) {
       {headers.length > 0 && (mapping || aggregatePreset) && (
         <>
           <div className="flex items-center justify-between gap-4 rounded-md border border-border bg-surface px-4 py-3 text-sm">
-            <span className="min-w-0 text-text-muted">
+            <span className="flex min-w-0 flex-col gap-2 text-text-muted">
+              {(presetLabel || aggregatePreset) && (
+                <span className="self-start rounded-full bg-accent/10 px-2 py-0.5 text-xs text-accent">
+                  Detected: {presetLabel ?? aggregatePreset?.label}
+                </span>
+              )}
               {aggregatePreset ? (
-                <span className="flex flex-col gap-0.5">
-                  {files.map((f) => (
-                    <span key={f.name} className="truncate">
-                      {f.name} · {f.rows.length} row{f.rows.length === 1 ? "" : "s"}
-                    </span>
-                  ))}
+                <span className="flex flex-col gap-1">
+                  {(parsed?.files ?? files.map((f): FileRole => ({ name: f.name, role: f.name, used: true }))).map(
+                    (f) => (
+                      <span key={f.name} className="flex min-w-0 items-center gap-2">
+                        <span
+                          className={cn(
+                            "shrink-0 rounded-full px-2 py-0.5 text-xs",
+                            f.used ? "bg-profit/15 text-profit" : "bg-surface-2 text-text-faint",
+                          )}
+                        >
+                          {f.role}
+                        </span>
+                        <span className={cn("truncate", !f.used && "text-text-faint")}>{f.name}</span>
+                        {f.note && <span className="shrink-0 text-xs text-text-faint">· {f.note}</span>}
+                      </span>
+                    ),
+                  )}
                 </span>
               ) : (
                 <>
                   {primary.name} · {rows.length} row{rows.length === 1 ? "" : "s"}
                 </>
-              )}
-              {(presetLabel || aggregatePreset) && (
-                <span className="ml-2 rounded-full bg-accent/10 px-2 py-0.5 text-xs text-accent">
-                  Detected: {presetLabel ?? aggregatePreset?.label}
-                </span>
               )}
             </span>
             <span className="flex shrink-0 items-center gap-3">

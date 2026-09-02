@@ -10,7 +10,7 @@ import {
 import { pairExecutions, type PairingExec } from "./pairing";
 import { aggregateTradingViewPaper, isTradingViewPaperFile } from "./tradingview";
 
-export type { ImportFile, ParsedTradeRow, ParseResult } from "./common";
+export type { FileRole, ImportFile, ParsedTradeRow, ParseResult } from "./common";
 
 export type ColumnMapping = {
   symbol: string;
@@ -207,7 +207,7 @@ export const AGGREGATE_PRESETS: AggregatePreset[] = [
     id: "tradingview-paper",
     label: "TradingView Paper Trading",
     description:
-      "Drop the order history export (required) together with the positions and balance history exports taken at the same time: positions pin down what was already open when the order history starts, and balance history is used to verify every P&L against TradingView's own numbers.",
+      "Select every file TradingView's export gave you — they're sorted out automatically. Order history holds the fills; positions pins down what was already open when it starts; balance history verifies every P&L against TradingView's own numbers; the rest are ignored.",
     detect: isTradingViewPaperFile,
     aggregate: aggregateTradingViewPaper,
   },
