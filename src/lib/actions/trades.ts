@@ -168,8 +168,16 @@ export type BulkImportResult = { imported: number; duplicates: number };
  * re-downloaded and re-imported routinely (TradingView caps its export
  * at the most recent orders, so overlapping windows are the norm), and
  * the same fill pairs must not land twice.
+ *
+ * Prices and sizes must match exactly; timestamps only within a few
+ * seconds. TradingView's CSV order history carries the order's closing
+ * time while its API reports the fill time, and the two occasionally
+ * differ by a second — the same trade must dedup whether it arrived by
+ * file or by sync.
  */
-function importKey(t: {
+const IMPORT_TIME_TOLERANCE_MS = 3000;
+
+type ImportIdentity = {
   symbol: string;
   side: string;
   quantity: number;
@@ -177,16 +185,39 @@ function importKey(t: {
   avgExitPrice: number | null;
   openedAt: Date;
   closedAt: Date | null;
-}) {
-  return [
-    t.symbol,
-    t.side,
-    t.quantity,
-    t.avgEntryPrice,
-    t.avgExitPrice ?? "",
-    t.openedAt.getTime(),
-    t.closedAt?.getTime() ?? "",
-  ].join("|");
+};
+
+function importKey(t: ImportIdentity) {
+  return [t.symbol, t.side, t.quantity, t.avgEntryPrice, t.avgExitPrice ?? ""].join("|");
+}
+
+/**
+ * Finds the stored trade closest in time to `candidate` among those
+ * sharing its key, or undefined when none is within tolerance. Each
+ * stored trade is claimed by at most one candidate so two identical
+ * scalps seconds apart still count as two.
+ */
+function claimDuplicate(
+  candidate: ImportIdentity,
+  stored: Map<string, ImportIdentity[]>,
+): ImportIdentity | undefined {
+  const bucket = stored.get(importKey(candidate));
+  if (!bucket) return undefined;
+  let best: { index: number; distance: number } | null = null;
+  bucket.forEach((existing, index) => {
+    if ((existing.closedAt == null) !== (candidate.closedAt == null)) return;
+    const dOpen = Math.abs(existing.openedAt.getTime() - candidate.openedAt.getTime());
+    const dClose =
+      existing.closedAt && candidate.closedAt
+        ? Math.abs(existing.closedAt.getTime() - candidate.closedAt.getTime())
+        : 0;
+    if (dOpen > IMPORT_TIME_TOLERANCE_MS || dClose > IMPORT_TIME_TOLERANCE_MS) return;
+    const distance = dOpen + dClose;
+    if (!best || distance < best.distance) best = { index, distance };
+  });
+  if (!best) return undefined;
+  const { index } = best as { index: number; distance: number };
+  return bucket.splice(index, 1)[0];
 }
 
 export async function bulkImportTrades(
@@ -208,7 +239,11 @@ export async function bulkImportTrades(
       closedAt: true,
     },
   });
-  const seen = new Set(existing.map(importKey));
+  const stored = new Map<string, ImportIdentity[]>();
+  for (const t of existing) {
+    const key = importKey(t);
+    stored.set(key, [...(stored.get(key) ?? []), t]);
+  }
 
   const data = [];
   for (const r of rows) {
@@ -229,12 +264,14 @@ export async function bulkImportTrades(
       commissions: r.commissions,
       netPnl: r.netPnl,
       netRoi: r.netRoi,
-      source: `csv:${sourceLabel}`,
+      // Files are "csv:<preset>"; a label with its own prefix (the
+      // TradingView sync's "tradingview:paper") is stored as is.
+      source: sourceLabel.includes(":") ? sourceLabel : `csv:${sourceLabel}`,
     };
     // Only rows already in the database count as duplicates — two
     // genuinely separate 1-lot scalps can share every field down to the
     // second, and collapsing those would lose a real trade.
-    if (seen.has(importKey(candidate))) continue;
+    if (claimDuplicate(candidate, stored)) continue;
     data.push(candidate);
   }
 

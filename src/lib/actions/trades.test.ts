@@ -114,6 +114,36 @@ describe("bulkImportTrades", () => {
     const fourth = await actions.bulkImportTrades(otherAccount.id, "futures", "tradingview-paper", [row]);
     expect(fourth).toEqual({ imported: 1, duplicates: 0 });
   });
+
+  it("treats the same fills stamped a second apart as one trade, but not a different price", async () => {
+    // TradingView's CSV carries the order's closing time, its API the
+    // fill time; they can differ by a second for the same trade.
+    const synced = {
+      ...row,
+      symbol: "MES",
+      openedAt: "2026-09-01T16:58:37.000Z",
+      closedAt: "2026-09-01T17:00:02.000Z",
+    };
+    expect(await actions.bulkImportTrades(accountId, "futures", "tradingview:paper", [synced])).toEqual({
+      imported: 1,
+      duplicates: 0,
+    });
+
+    const fromCsv = { ...synced, closedAt: "2026-09-01T17:00:03.000Z" };
+    const farApart = { ...synced, closedAt: "2026-09-01T17:00:30.000Z" };
+    const otherPrice = { ...synced, avgExitPrice: 29195.75 };
+    expect(
+      await actions.bulkImportTrades(accountId, "futures", "tradingview-paper", [fromCsv, farApart, otherPrice]),
+    ).toEqual({ imported: 2, duplicates: 1 });
+
+    // Each stored trade is claimed once: two near-identical candidates
+    // against one stored trade yield one duplicate and one new trade.
+    const nearTwin = { ...synced, openedAt: "2026-09-01T16:58:38.000Z", symbol: "M2K" };
+    await actions.bulkImportTrades(accountId, "futures", "tradingview:paper", [{ ...nearTwin, openedAt: "2026-09-01T16:58:37.000Z" }]);
+    expect(
+      await actions.bulkImportTrades(accountId, "futures", "tradingview-paper", [nearTwin, nearTwin]),
+    ).toEqual({ imported: 1, duplicates: 1 });
+  });
 });
 
 describe("mergeTrades", () => {

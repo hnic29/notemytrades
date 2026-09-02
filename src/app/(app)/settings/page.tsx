@@ -3,6 +3,8 @@ import { listAllAccounts } from "@/lib/actions/accounts";
 import { AiSettingsForm } from "@/components/settings/AiSettingsForm";
 import { AccountsManager } from "@/components/settings/AccountsManager";
 import { DataManager } from "@/components/settings/DataManager";
+import { TradingViewSettings } from "@/components/settings/TradingViewSettings";
+import { DEFAULT_CDP_PORT } from "@/lib/tradingview/cdp";
 
 export default async function SettingsPage() {
   const [settings, accounts] = await Promise.all([getSettings(), listAllAccounts()]);
@@ -22,6 +24,16 @@ export default async function SettingsPage() {
           initialApiKey={settings.aiApiKey ?? ""}
           initialModel={settings.aiModel ?? ""}
         />
+      </section>
+
+      <section>
+        <h2 className="mb-1 text-lg font-medium text-text">TradingView</h2>
+        <p className="mb-4 text-sm text-text-faint">
+          Sync Paper Trading straight out of TradingView Desktop — no CSV export needed. The app
+          talks to the running TradingView over Chromium&apos;s remote-debugging port and only ever
+          reads; it can&apos;t place or change orders.
+        </p>
+        <TradingViewSettings initialPort={settings.tradingViewPort ?? DEFAULT_CDP_PORT} />
       </section>
 
       <section>

@@ -19,6 +19,7 @@ import { bulkImportTrades, type BulkImportResult } from "@/lib/actions/trades";
 import { computeSummaryStats } from "@/lib/analytics/stats";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { TradingViewSyncButton } from "./TradingViewSyncButton";
 
 type AccountOption = { id: string; name: string; currency: string };
 
@@ -304,6 +305,16 @@ export function ImportWizard({ accounts }: { accounts: AccountOption[] }) {
               />
             </label>
           </div>
+          <div className="mt-4 flex items-center gap-3 text-xs text-text-faint">
+            <span className="h-px w-10 bg-border" />
+            or skip the files entirely
+            <span className="h-px w-10 bg-border" />
+          </div>
+          <TradingViewSyncButton accounts={accounts} />
+          <p className="max-w-md text-xs text-text-faint">
+            Paper Trading in TradingView Desktop can be read directly — every fill, straight from
+            the running app.
+          </p>
         </div>
       )}
 

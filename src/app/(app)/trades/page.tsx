@@ -3,6 +3,7 @@ import { Plus, Upload } from "lucide-react";
 import { listTradesWithAccount } from "@/lib/queries/trades";
 import { listAccounts } from "@/lib/actions/accounts";
 import { TradeLogTable } from "@/components/trades/TradeLogTable";
+import { TradingViewSyncButton } from "@/components/trades/TradingViewSyncButton";
 
 export default async function TradesPage() {
   const [trades, accounts] = await Promise.all([listTradesWithAccount(), listAccounts()]);
@@ -17,6 +18,7 @@ export default async function TradesPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <TradingViewSyncButton accounts={accounts.map((a) => ({ id: a.id, name: a.name }))} />
           <Link
             href="/trades/import"
             className="flex items-center gap-1.5 rounded-md border border-border-strong px-3 py-2 text-sm text-text hover:bg-surface-2"

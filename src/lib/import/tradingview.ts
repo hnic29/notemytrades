@@ -92,8 +92,8 @@ const KIND_LABELS: Record<TradingViewFileKind, string> = {
   "activity-log": "Activity log",
 };
 
-type BalanceClose = {
-  rowNum: number;
+/** One "Close … position" entry from TradingView's balance history. */
+export type BalanceClose = {
   symbol: string; // normalized
   side: TradeSide;
   qty: number;
@@ -107,36 +107,47 @@ type BalanceClose = {
 const CLOSE_ACTION =
   /^Close (long|short) position for symbol (\S+) at price ([\d.,]+) for ([\d.,]+) units\. Position AVG Price was ([\d.,]+)(?:.*?point value: ([\d.,]+))?/i;
 
+/**
+ * The text TradingView writes for every close — identical in the CSV
+ * export's Action column and in the account history its API returns.
+ * Anything else (deposits, resets) isn't a trade → null.
+ */
+export function parseCloseAction(
+  action: string,
+): Omit<BalanceClose, "realizedPnl" | "time"> | null {
+  const m = CLOSE_ACTION.exec(action.trim());
+  if (!m) return null;
+  const price = parseNumber(m[3]);
+  const qty = parseNumber(m[4]);
+  const avgPrice = parseNumber(m[5]);
+  if (price == null || qty == null || avgPrice == null) return null;
+  return {
+    symbol: parseTradingViewSymbol(m[2]).symbol,
+    side: m[1].toLowerCase() as TradeSide,
+    qty,
+    price,
+    avgPrice,
+    pointValue: m[6] ? parseNumber(m[6]) : null,
+  };
+}
+
 function parseBalanceCloses(file: ImportFile): { closes: BalanceClose[]; errors: ParseResult["errors"] } {
   const closes: BalanceClose[] = [];
   const errors: ParseResult["errors"] = [];
   file.rows.forEach((row, index) => {
     const rowNum = index + 2;
     const action = row["Action"] ?? "";
-    const m = CLOSE_ACTION.exec(action.trim());
     // Deposits, resets, and anything else that isn't a close are simply
     // not trades — skip silently.
-    if (!m) return;
+    if (!CLOSE_ACTION.test(action.trim())) return;
+    const parsed = parseCloseAction(action);
     const time = parseDate(row["Time"]);
     const realizedPnl = parseNumber(row["Realized PnL (value)"]);
-    const price = parseNumber(m[3]);
-    const qty = parseNumber(m[4]);
-    const avgPrice = parseNumber(m[5]);
-    if (!time || realizedPnl == null || price == null || qty == null || avgPrice == null) {
+    if (!parsed || !time || realizedPnl == null) {
       errors.push({ row: rowNum, message: "Unreadable balance history row" });
       return;
     }
-    closes.push({
-      rowNum,
-      symbol: parseTradingViewSymbol(m[2]).symbol,
-      side: m[1].toLowerCase() as TradeSide,
-      qty,
-      price,
-      avgPrice,
-      pointValue: m[6] ? parseNumber(m[6]) : null,
-      realizedPnl,
-      time,
-    });
+    closes.push({ ...parsed, realizedPnl, time });
   });
   closes.sort((a, b) => a.time.localeCompare(b.time));
   return { closes, errors };
@@ -275,6 +286,14 @@ function seedPrice(
 
 const fmt = (n: number) => n.toFixed(2);
 
+/**
+ * TradingView stamps a balance-history line up to a couple of seconds
+ * after the fill it books (the fill says 12:00:02, the close 12:00:03),
+ * so "the same close" is matched with a small tolerance, not exactly.
+ */
+const CLOSE_TIME_TOLERANCE_MS = 3000;
+const nearAny = (times: number[], t: number) => times.some((x) => Math.abs(x - t) <= CLOSE_TIME_TOLERANCE_MS);
+
 /** TradingView stamps every export with the moment it was taken. */
 const EXPORT_STAMP = /(\d{4}-\d{2}-\d{2})T(\d{2})_(\d{2})_(\d{2})/;
 function exportStamp(name: string): string | null {
@@ -372,13 +391,65 @@ export function aggregateTradingViewPaper(files: ImportFile[]): ParseResult {
 
   const balance = balanceFile ? parseBalanceCloses(balanceFile) : null;
   if (balance) errors.push(...balance.errors);
-  const closes = balance?.closes ?? null;
-  const endPositions = positionsFile ? parsePositions(positionsFile) : null;
+
+  const paired = pairTradingViewPaper({
+    execs,
+    assetTypes,
+    closes: balance?.closes ?? null,
+    endPositions: positionsFile ? parsePositions(positionsFile) : null,
+    errors,
+    warnings,
+    windowLabel: "this order history export",
+    windowEndLabel: "the end of the export",
+  });
+
+  return { ...paired, files: fileRoles };
+}
+
+export type TradingViewPaperInput = {
+  execs: PairingExec[];
+  /** Normalized symbol → asset type the symbol parser inferred. */
+  assetTypes: Map<string, string | null>;
+  /**
+   * Net position (buys positive) per symbol at the end of the fill
+   * window, when known exactly — from the positions export or the live
+   * positions list. Null when unknown.
+   */
+  endPositions: Map<string, number> | null;
+  /** TradingView's own closes with realized P&L, if available. */
+  closes: BalanceClose[] | null;
+  /**
+   * Point values TradingView reported directly for a symbol (positions
+   * carry one). Used when no close mentions the symbol.
+   */
+  pointValues?: Map<string, number>;
+  errors?: ParseResult["errors"];
+  warnings?: string[];
+  /** How to name the fill window in warnings. */
+  windowLabel?: string;
+  windowEndLabel?: string;
+};
+
+/**
+ * The part of the TradingView import that doesn't care where the data
+ * came from: infer the starting position, pair fills FIFO, verify
+ * against TradingView's realized P&L. The CSV export and the live sync
+ * both feed it.
+ */
+export function pairTradingViewPaper(input: TradingViewPaperInput): ParseResult {
+  const { execs, assetTypes, endPositions, closes } = input;
+  const errors = input.errors ?? [];
+  const warnings = input.warnings ?? [];
+  const windowLabel = input.windowLabel ?? "this export";
+  const windowEndLabel = input.windowEndLabel ?? "the end of the export";
 
   // Multipliers: TradingView's own point value beats the lookup table.
   const multipliers = new Map<string, number>();
   for (const c of closes ?? []) {
     if (c.pointValue != null && !multipliers.has(c.symbol)) multipliers.set(c.symbol, c.pointValue);
+  }
+  for (const [symbol, pv] of input.pointValues ?? []) {
+    if (!multipliers.has(symbol)) multipliers.set(symbol, pv);
   }
   for (const [symbol, assetType] of assetTypes) {
     if (multipliers.has(symbol)) continue;
@@ -419,7 +490,7 @@ export function aggregateTradingViewPaper(files: ImportFile[]): ParseResult {
       .map((s) => `${s.symbol} ${s.side} ×${s.quantity} closed ${new Date(s.closedAt).toLocaleString()}`)
       .join("; ");
     warnings.push(
-      `${paired.seedCloses.length} trade${paired.seedCloses.length === 1 ? " was" : "s were"} opened before the start of this order history export and skipped (no open time available): ${detail}. Export more often so windows overlap; already-imported trades are never duplicated.`,
+      `${paired.seedCloses.length} trade${paired.seedCloses.length === 1 ? " was" : "s were"} opened before the start of ${windowLabel} and skipped (no open time available): ${detail}. Export more often so windows overlap; already-imported trades are never duplicated.`,
     );
   }
 
@@ -428,21 +499,18 @@ export function aggregateTradingViewPaper(files: ImportFile[]): ParseResult {
   if (closes) {
     const symbols = new Set(paired.trades.map((t) => t.symbol));
     for (const symbol of symbols) {
-      const closeTimes = new Set([
-        ...paired.trades.filter((t) => t.symbol === symbol).map((t) => t.closedAt!),
-        ...paired.seedCloses.filter((s) => s.symbol === symbol).map((s) => s.closedAt),
-      ]);
       const ours = [
         ...paired.trades.filter((t) => t.symbol === symbol),
         ...paired.seedCloses.filter((s) => s.symbol === symbol),
       ];
+      const closeTimes = ours.map((t) => new Date(t.closedAt!).getTime());
       const ourNet = ours.reduce((s, t) => s + t.netPnl, 0);
       const ourGross = ours.reduce(
         (s, t) => s + t.netPnl + ("fees" in t ? t.fees + t.commissions : 0),
         0,
       );
       const theirs = closes
-        .filter((c) => c.symbol === symbol && closeTimes.has(c.time))
+        .filter((c) => c.symbol === symbol && nearAny(closeTimes, new Date(c.time).getTime()))
         .reduce((s, c) => s + c.realizedPnl, 0);
       const matches = Math.abs(ourNet - theirs) < 0.01 || Math.abs(ourGross - theirs) < 0.01;
       if (!matches) {
@@ -455,11 +523,11 @@ export function aggregateTradingViewPaper(files: ImportFile[]): ParseResult {
 
   for (const [symbol, lots] of paired.openLots) {
     const qty = lots.reduce((s, l) => s + l.quantity, 0);
-    warnings.push(`${symbol}: ${qty} ${lots[0].side} still open at the end of the export — not imported until it's closed.`);
+    warnings.push(`${symbol}: ${qty} ${lots[0].side} still open at ${windowEndLabel} — not imported until it's closed.`);
   }
 
   const types = new Set([...assetTypes.values()].filter(Boolean));
   const suggestedAssetType = types.size === 1 ? [...types][0]! : undefined;
 
-  return { trades: paired.trades, errors, warnings, suggestedAssetType, files: fileRoles };
+  return { trades: paired.trades, errors, warnings, suggestedAssetType };
 }

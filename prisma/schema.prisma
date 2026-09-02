@@ -273,6 +273,8 @@ model AppSettings {
   aiBaseUrl   String?
   aiApiKey    String?
   aiModel     String?
+  // Remote-debugging port TradingView Desktop was launched with (default 9222).
+  tradingViewPort Int?
   updatedAt   DateTime  @updatedAt
 }
 
