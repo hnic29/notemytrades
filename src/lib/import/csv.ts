@@ -1,4 +1,16 @@
 import { computeTradeMath, resolveClosedAt, type TradeSide } from "@/lib/trade-math";
+import {
+  hasHeader as has,
+  parseDate,
+  parseNumber,
+  type ImportFile,
+  type ParsedTradeRow,
+  type ParseResult,
+} from "./common";
+import { pairExecutions, type PairingExec } from "./pairing";
+import { aggregateTradingViewPaper, isTradingViewPaperFile } from "./tradingview";
+
+export type { ImportFile, ParsedTradeRow, ParseResult } from "./common";
 
 export type ColumnMapping = {
   symbol: string;
@@ -13,25 +25,6 @@ export type ColumnMapping = {
   defaultSide: TradeSide; // used when `side` column is null or unparseable
 };
 
-export type ParsedTradeRow = {
-  symbol: string;
-  side: TradeSide;
-  quantity: number;
-  avgEntryPrice: number;
-  avgExitPrice: number | null;
-  openedAt: string; // ISO
-  closedAt: string | null;
-  fees: number;
-  commissions: number;
-  netPnl: number;
-  netRoi: number | null;
-};
-
-export type ParseResult = {
-  trades: ParsedTradeRow[];
-  errors: { row: number; message: string }[];
-};
-
 const SHORT_HINTS = ["short", "sell", "sell short", "s"];
 const LONG_HINTS = ["long", "buy", "b"];
 
@@ -41,22 +34,6 @@ function parseSide(raw: string | undefined, fallback: TradeSide): TradeSide {
   if (SHORT_HINTS.includes(v)) return "short";
   if (LONG_HINTS.includes(v)) return "long";
   return fallback;
-}
-
-function parseNumber(raw: string | undefined): number | null {
-  if (raw == null || raw.trim() === "") return null;
-  const cleaned = raw.replace(/[$,]/g, "").trim();
-  const isParen = /^\(.*\)$/.test(cleaned);
-  const n = Number(isParen ? cleaned.slice(1, -1) : cleaned);
-  if (!Number.isFinite(n)) return null;
-  return isParen ? -n : n;
-}
-
-function parseDate(raw: string | undefined): string | null {
-  if (!raw || raw.trim() === "") return null;
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString();
 }
 
 /**
@@ -150,9 +127,6 @@ export type FormatPreset = {
   mapping: (headers: string[]) => Partial<ColumnMapping>;
 };
 
-const has = (headers: string[], name: string) =>
-  headers.some((h) => h.trim().toLowerCase() === name.toLowerCase());
-
 export const FORMAT_PRESETS: FormatPreset[] = [
   {
     // MT4's classic "Trade History" statement report duplicates the
@@ -207,21 +181,35 @@ export function detectFormat(headers: string[]): FormatPreset | null {
  * separate rows sharing no column that pairs them except symbol,
  * chronological order, and a "Pos Effect" of TO OPEN / TO CLOSE.
  * detectFormat()/mapCsvRows() assume entry+exit live on the same row,
- * so this needs its own pipeline (aggregateThinkorswimExecutions)
- * instead of a ColumnMapping.
+ * so these get their own pipelines (see pairing.ts) instead of a
+ * ColumnMapping. Some take several files at once (TradingView).
  */
 export type AggregatePreset = {
   id: string;
   label: string;
+  /** Shown in the wizard so the user knows what to drop in. */
+  description: string;
   detect: (headers: string[]) => boolean;
+  aggregate: (files: ImportFile[]) => ParseResult;
 };
 
 export const AGGREGATE_PRESETS: AggregatePreset[] = [
   {
     id: "thinkorswim",
     label: "thinkorswim Account Statement (Trade History)",
+    description:
+      "One row per fill. Entries and exits are paired FIFO by symbol using the Pos Effect column, in chronological order.",
     detect: (h) =>
       has(h, "Exec Time") && has(h, "Pos Effect") && has(h, "Side") && has(h, "Qty") && has(h, "Symbol"),
+    aggregate: (files) => aggregateThinkorswimExecutions(files[0].rows),
+  },
+  {
+    id: "tradingview-paper",
+    label: "TradingView Paper Trading",
+    description:
+      "Drop the order history export (required) together with the positions and balance history exports taken at the same time: positions pin down what was already open when the order history starts, and balance history is used to verify every P&L against TradingView's own numbers.",
+    detect: isTradingViewPaperFile,
+    aggregate: aggregateTradingViewPaper,
   },
 ];
 
@@ -229,35 +217,18 @@ export function detectAggregateFormat(headers: string[]): AggregatePreset | null
   return AGGREGATE_PRESETS.find((p) => p.detect(headers)) ?? null;
 }
 
-type OpenLot = { side: TradeSide; quantityRemaining: number; price: number; time: string };
-
 /**
  * Pairs thinkorswim's "TO OPEN"/"TO CLOSE" executions into completed
- * trades via per-symbol FIFO matching: a closing execution consumes
- * quantity from the oldest still-open lot(s) for that symbol first,
- * splitting into multiple output trades if it spans more than one
- * lot rather than blending entry prices together. Options legs (calls/
- * puts/spreads) aren't specially handled beyond whatever string is in
- * the Symbol column — as long as each leg has a distinct symbol string
+ * trades via per-symbol FIFO matching. Options legs (calls/puts/
+ * spreads) aren't specially handled beyond whatever string is in the
+ * Symbol column — as long as each leg has a distinct symbol string
  * (thinkorswim's option symbols include strike/expiry), pairing is
  * still correct per-instrument; multi-leg spread P&L isn't reconciled
  * as a single combo trade.
  */
 export function aggregateThinkorswimExecutions(rows: Record<string, string>[]): ParseResult {
-  const trades: ParsedTradeRow[] = [];
   const errors: ParseResult["errors"] = [];
-
-  type Exec = {
-    rowNum: number;
-    symbol: string;
-    side: "buy" | "sell";
-    posEffect: "open" | "close";
-    qty: number;
-    price: number;
-    time: string;
-  };
-
-  const execs: Exec[] = [];
+  const execs: PairingExec[] = [];
 
   rows.forEach((row, index) => {
     const rowNum = index + 2;
@@ -290,70 +261,12 @@ export function aggregateThinkorswimExecutions(rows: Record<string, string>[]): 
       qty: Math.abs(qty),
       price,
       time,
+      seq: index,
     });
   });
 
-  // Chronological order is what makes FIFO matching correct — CSV row
-  // order isn't guaranteed to already be sorted this way.
-  execs.sort((a, b) => a.time.localeCompare(b.time));
-
-  const openLotsBySymbol = new Map<string, OpenLot[]>();
-
-  for (const ex of execs) {
-    const queue = openLotsBySymbol.get(ex.symbol) ?? [];
-    openLotsBySymbol.set(ex.symbol, queue);
-
-    if (ex.posEffect === "open") {
-      const side: TradeSide = ex.side === "buy" ? "long" : "short";
-      queue.push({ side, quantityRemaining: ex.qty, price: ex.price, time: ex.time });
-      continue;
-    }
-
-    let remainingToClose = ex.qty;
-    while (remainingToClose > 0) {
-      const lot = queue[0];
-      if (!lot) {
-        errors.push({
-          row: ex.rowNum,
-          message: `Closing execution for ${ex.symbol} has no matching open lot (${remainingToClose} unmatched)`,
-        });
-        break;
-      }
-
-      const matchedQty = Math.min(lot.quantityRemaining, remainingToClose);
-      const math = computeTradeMath({
-        side: lot.side,
-        quantity: matchedQty,
-        multiplier: 1,
-        avgEntryPrice: lot.price,
-        avgExitPrice: ex.price,
-        fees: 0,
-        commissions: 0,
-      });
-      const closedAt =
-        resolveClosedAt(new Date(lot.time), new Date(ex.time), ex.price)?.toISOString() ?? ex.time;
-
-      trades.push({
-        symbol: ex.symbol,
-        side: lot.side,
-        quantity: matchedQty,
-        avgEntryPrice: lot.price,
-        avgExitPrice: ex.price,
-        openedAt: lot.time,
-        closedAt,
-        fees: 0,
-        commissions: 0,
-        netPnl: math.netPnl,
-        netRoi: math.netRoi,
-      });
-
-      lot.quantityRemaining -= matchedQty;
-      remainingToClose -= matchedQty;
-      if (lot.quantityRemaining <= 0) queue.shift();
-    }
-  }
-
-  return { trades, errors };
+  const paired = pairExecutions(execs);
+  return { trades: paired.trades, errors: [...errors, ...paired.errors] };
 }
 
 const FIELD_NAME_HINTS: Record<

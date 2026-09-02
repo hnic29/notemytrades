@@ -73,6 +73,49 @@ describe("splitTrade", () => {
   });
 });
 
+describe("bulkImportTrades", () => {
+  const row = {
+    symbol: "MNQ",
+    side: "short" as const,
+    quantity: 1,
+    multiplier: 2,
+    avgEntryPrice: 29203,
+    avgExitPrice: 29195.5,
+    openedAt: "2026-09-01T09:22:35.000Z",
+    closedAt: "2026-09-01T09:26:23.000Z",
+    fees: 0,
+    commissions: 0,
+    netPnl: 15,
+    netRoi: 15 / (29203 * 2),
+  };
+
+  it("stores the multiplier and reports how many rows were imported", async () => {
+    const result = await actions.bulkImportTrades(accountId, "futures", "tradingview-paper", [row]);
+    expect(result).toEqual({ imported: 1, duplicates: 0 });
+    const stored = await prisma.trade.findFirstOrThrow({ where: { accountId, symbol: "MNQ" } });
+    expect(stored.multiplier).toBe(2);
+    expect(stored.source).toBe("csv:tradingview-paper");
+  });
+
+  it("skips rows already in the account on re-import, but not identical rows in the same batch", async () => {
+    const other = { ...row, openedAt: "2026-09-01T10:00:00.000Z", closedAt: "2026-09-01T10:05:00.000Z" };
+    // Re-import of the overlapping window: `row` is already there.
+    const second = await actions.bulkImportTrades(accountId, "futures", "tradingview-paper", [row, other]);
+    expect(second).toEqual({ imported: 1, duplicates: 1 });
+
+    // Two genuinely separate scalps that happen to share every field
+    // must both land — dedup is only against what's already stored.
+    const twin = { ...row, openedAt: "2026-09-01T11:00:00.000Z", closedAt: "2026-09-01T11:00:30.000Z" };
+    const third = await actions.bulkImportTrades(accountId, "futures", "tradingview-paper", [twin, twin]);
+    expect(third).toEqual({ imported: 2, duplicates: 0 });
+
+    // Same trade in a different account is not a duplicate.
+    const otherAccount = await prisma.account.create({ data: { name: "B", assetType: "mixed", currency: "USD" } });
+    const fourth = await actions.bulkImportTrades(otherAccount.id, "futures", "tradingview-paper", [row]);
+    expect(fourth).toEqual({ imported: 1, duplicates: 0 });
+  });
+});
+
 describe("mergeTrades", () => {
   it("weighted-averages entry/exit prices and sums quantity/fees/commissions", async () => {
     const a = await makeTrade({

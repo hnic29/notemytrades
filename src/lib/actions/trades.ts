@@ -150,6 +150,7 @@ export type BulkImportRow = {
   symbol: string;
   side: TradeSide;
   quantity: number;
+  multiplier?: number;
   avgEntryPrice: number;
   avgExitPrice: number | null;
   openedAt: string;
@@ -160,14 +161,58 @@ export type BulkImportRow = {
   netRoi: number | null;
 };
 
+export type BulkImportResult = { imported: number; duplicates: number };
+
+/**
+ * Identity of a trade for duplicate detection. Broker exports are
+ * re-downloaded and re-imported routinely (TradingView caps its export
+ * at the most recent orders, so overlapping windows are the norm), and
+ * the same fill pairs must not land twice.
+ */
+function importKey(t: {
+  symbol: string;
+  side: string;
+  quantity: number;
+  avgEntryPrice: number;
+  avgExitPrice: number | null;
+  openedAt: Date;
+  closedAt: Date | null;
+}) {
+  return [
+    t.symbol,
+    t.side,
+    t.quantity,
+    t.avgEntryPrice,
+    t.avgExitPrice ?? "",
+    t.openedAt.getTime(),
+    t.closedAt?.getTime() ?? "",
+  ].join("|");
+}
+
 export async function bulkImportTrades(
   accountId: string,
   assetType: string,
   sourceLabel: string,
   rows: BulkImportRow[],
-) {
-  const result = await prisma.trade.createMany({
-    data: rows.map((r) => ({
+): Promise<BulkImportResult> {
+  const symbols = [...new Set(rows.map((r) => r.symbol))];
+  const existing = await prisma.trade.findMany({
+    where: { accountId, symbol: { in: symbols } },
+    select: {
+      symbol: true,
+      side: true,
+      quantity: true,
+      avgEntryPrice: true,
+      avgExitPrice: true,
+      openedAt: true,
+      closedAt: true,
+    },
+  });
+  const seen = new Set(existing.map(importKey));
+
+  const data = [];
+  for (const r of rows) {
+    const candidate = {
       accountId,
       symbol: r.symbol,
       assetType,
@@ -176,6 +221,7 @@ export async function bulkImportTrades(
       openedAt: new Date(r.openedAt),
       closedAt: r.closedAt ? new Date(r.closedAt) : null,
       quantity: r.quantity,
+      multiplier: r.multiplier ?? 1,
       avgEntryPrice: r.avgEntryPrice,
       avgExitPrice: r.avgExitPrice,
       grossPnl: r.netPnl + r.fees + r.commissions,
@@ -184,11 +230,18 @@ export async function bulkImportTrades(
       netPnl: r.netPnl,
       netRoi: r.netRoi,
       source: `csv:${sourceLabel}`,
-    })),
-  });
+    };
+    // Only rows already in the database count as duplicates — two
+    // genuinely separate 1-lot scalps can share every field down to the
+    // second, and collapsing those would lose a real trade.
+    if (seen.has(importKey(candidate))) continue;
+    data.push(candidate);
+  }
+
+  const result = data.length > 0 ? await prisma.trade.createMany({ data }) : { count: 0 };
   revalidatePath("/trades");
   revalidatePath("/dashboard");
-  return result.count;
+  return { imported: result.count, duplicates: rows.length - result.count };
 }
 
 export async function generateShareLink(id: string) {

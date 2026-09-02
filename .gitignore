@@ -50,3 +50,6 @@ next-env.d.ts
 /test-results/
 /playwright-report/
 
+
+# Real broker exports used for local importer development (never committed)
+/samples/

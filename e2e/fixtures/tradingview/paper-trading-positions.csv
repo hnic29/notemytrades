@@ -1,0 +1,2 @@
+Symbol,Side,Quantity,Avg fill price,Take profit,Stop loss,Last price,Unrealized PnL (value),Unrealized PnL (currency),Unrealized PnL %,Trade value,Market value,Leverage,Margin,Expiration date
+CME_MINI:MNQ1!,Short,1,29080,29077,,29081.25,-2.5,USD,0.00%,"58,160.00 USD","58,157.50 USD",20x,"2,907.88 USD",

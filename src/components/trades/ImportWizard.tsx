@@ -7,13 +7,14 @@ import { Upload } from "lucide-react";
 import {
   detectFormat,
   detectAggregateFormat,
-  aggregateThinkorswimExecutions,
   guessMapping,
   mapCsvRows,
+  type AggregatePreset,
   type ColumnMapping,
+  type ImportFile,
   type ParseResult,
 } from "@/lib/import/csv";
-import { bulkImportTrades } from "@/lib/actions/trades";
+import { bulkImportTrades, type BulkImportResult } from "@/lib/actions/trades";
 import { computeSummaryStats } from "@/lib/analytics/stats";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -36,97 +37,122 @@ const ASSET_TYPES = ["stock", "futures", "forex", "crypto", "option"];
 
 export function ImportWizard({ accounts }: { accounts: AccountOption[] }) {
   const router = useRouter();
-  const [headers, setHeaders] = useState<string[]>([]);
-  const [rows, setRows] = useState<Record<string, string>[]>([]);
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [files, setFiles] = useState<ImportFile[]>([]);
   const [presetLabel, setPresetLabel] = useState<string | null>(null);
   const [mapping, setMapping] = useState<ColumnMapping | null>(null);
-  const [aggregateLabel, setAggregateLabel] = useState<string | null>(null);
-  const [aggregatePresetId, setAggregatePresetId] = useState<string | null>(null);
+  const [aggregatePreset, setAggregatePreset] = useState<AggregatePreset | null>(null);
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
   const [assetType, setAssetType] = useState("stock");
   const [isPending, startTransition] = useTransition();
-  const [importedCount, setImportedCount] = useState<number | null>(null);
+  const [importResult, setImportResult] = useState<BulkImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const account = accounts.find((a) => a.id === accountId);
+  // Column-mapped formats are single-file; the first one dropped is it.
+  const primary = files[0];
+  const headers = primary?.headers ?? [];
+  const rows = primary?.rows ?? [];
 
-  const handleFile = (file: File) => {
-    setError(null);
-    setFileName(file.name);
-    Papa.parse<Record<string, string>>(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        const hdrs = results.meta.fields ?? [];
-        setHeaders(hdrs);
-        setRows(results.data);
-
-        const aggregatePreset = detectAggregateFormat(hdrs);
-        if (aggregatePreset) {
-          // No column mapping to do — the pipeline is fixed for this format.
-          setAggregateLabel(aggregatePreset.label);
-          setAggregatePresetId(aggregatePreset.id);
-          setPresetLabel(null);
-          setMapping(null);
-          return;
-        }
-        setAggregateLabel(null);
-        setAggregatePresetId(null);
-
-        const preset = detectFormat(hdrs);
-        const empty: ColumnMapping = {
-          symbol: "",
-          quantity: "",
-          entryPrice: "",
-          exitPrice: null,
-          openedAt: "",
-          closedAt: null,
-          fees: null,
-          commissions: null,
-          side: null,
-          defaultSide: "long",
-        };
-        if (preset) {
-          setPresetLabel(preset.label);
-          setMapping({ ...empty, ...preset.mapping(hdrs) });
-        } else {
-          setPresetLabel(null);
-          setMapping({ ...empty, ...guessMapping(hdrs) });
-        }
-      },
-      error: (err) => setError(err.message),
+  const parseFile = (file: File) =>
+    new Promise<ImportFile>((resolve, reject) => {
+      Papa.parse<Record<string, string>>(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results) =>
+          resolve({ name: file.name, headers: results.meta.fields ?? [], rows: results.data }),
+        error: (err) => reject(err),
+      });
     });
+
+  const handleFiles = async (incoming: File[]) => {
+    setError(null);
+    let parsedFiles: ImportFile[];
+    try {
+      parsedFiles = await Promise.all(incoming.map(parseFile));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not read file");
+      return;
+    }
+    const all = [...files, ...parsedFiles];
+    setFiles(all);
+
+    // Some brokers spread one import across several exports; any file
+    // matching an aggregate preset switches the whole batch to it, and
+    // there's no column mapping to configure.
+    const aggregate = all.map((f) => detectAggregateFormat(f.headers)).find(Boolean) ?? null;
+    if (aggregate) {
+      setAggregatePreset(aggregate);
+      setPresetLabel(null);
+      setMapping(null);
+      const suggested = aggregate.aggregate(all).suggestedAssetType;
+      if (suggested) setAssetType(suggested);
+      return;
+    }
+    setAggregatePreset(null);
+
+    const hdrs = all[0].headers;
+    const preset = detectFormat(hdrs);
+    const empty: ColumnMapping = {
+      symbol: "",
+      quantity: "",
+      entryPrice: "",
+      exitPrice: null,
+      openedAt: "",
+      closedAt: null,
+      fees: null,
+      commissions: null,
+      side: null,
+      defaultSide: "long",
+    };
+    if (preset) {
+      setPresetLabel(preset.label);
+      setMapping({ ...empty, ...preset.mapping(hdrs) });
+    } else {
+      setPresetLabel(null);
+      setMapping({ ...empty, ...guessMapping(hdrs) });
+    }
+  };
+
+  const reset = () => {
+    setFiles([]);
+    setMapping(null);
+    setAggregatePreset(null);
+    setPresetLabel(null);
   };
 
   const parsed: ParseResult | null = useMemo(() => {
-    if (rows.length === 0) return null;
-    if (aggregateLabel) return aggregateThinkorswimExecutions(rows);
+    if (files.length === 0) return null;
+    if (aggregatePreset) return aggregatePreset.aggregate(files);
     if (!mapping) return null;
-    return mapCsvRows(rows, mapping);
-  }, [mapping, rows, aggregateLabel]);
+    return mapCsvRows(files[0].rows, mapping);
+  }, [mapping, files, aggregatePreset]);
 
   const handleImport = () => {
     if (!parsed || parsed.trades.length === 0 || !accountId) return;
     setError(null);
     startTransition(async () => {
       try {
-        const count = await bulkImportTrades(
+        const result = await bulkImportTrades(
           accountId,
           assetType,
-          aggregatePresetId ?? fileName?.replace(/\.[^.]+$/, "") ?? "generic",
+          aggregatePreset?.id ?? primary?.name.replace(/\.[^.]+$/, "") ?? "generic",
           parsed.trades,
         );
-        setImportedCount(count);
+        setImportResult(result);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Import failed");
       }
     });
   };
 
-  if (importedCount != null) {
+  if (importResult != null) {
+    const importedCount = importResult.imported;
+    const nothingNew = importedCount === 0 && importResult.duplicates > 0;
+    // Stats describe what actually landed; a re-import of an already
+    // imported window shouldn't re-report the same P&L as if it were new.
     const importStats =
       parsed &&
+      importedCount > 0 &&
       computeSummaryStats(
         parsed.trades.map((t) => ({
           netPnl: t.netPnl,
@@ -136,10 +162,23 @@ export function ImportWizard({ accounts }: { accounts: AccountOption[] }) {
       );
 
     return (
-      <div className="rounded-lg border border-profit/40 bg-profit-bg p-6">
-        <p className="text-center text-lg font-medium text-profit">
-          Imported {importedCount} trade{importedCount === 1 ? "" : "s"}
+      <div
+        className={
+          nothingNew
+            ? "rounded-lg border border-border bg-surface p-6"
+            : "rounded-lg border border-profit/40 bg-profit-bg p-6"
+        }
+      >
+        <p className={`text-center text-lg font-medium ${nothingNew ? "text-text" : "text-profit"}`}>
+          {nothingNew
+            ? "Nothing new to import"
+            : `Imported ${importedCount} trade${importedCount === 1 ? "" : "s"}`}
         </p>
+        {importResult.duplicates > 0 && (
+          <p className="mt-1 text-center text-sm text-text-muted">
+            {importResult.duplicates} already in this account — skipped, not duplicated.
+          </p>
+        )}
 
         {importStats && importStats.closedTrades > 0 && (
           <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -174,17 +213,22 @@ export function ImportWizard({ accounts }: { accounts: AccountOption[] }) {
 
   return (
     <div className="max-w-3xl space-y-6">
-      {!headers.length && (
+      {files.length === 0 && (
         <label className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed border-border-strong py-16 text-center hover:border-accent/50">
           <Upload className="h-8 w-8 text-text-faint" />
           <span className="text-sm text-text-muted">
-            Click to choose a CSV file exported from your broker
+            Click to choose CSV files exported from your broker
+          </span>
+          <span className="text-xs text-text-faint">
+            TradingView paper trading: select the order history, positions, and balance history
+            exports together
           </span>
           <input
             type="file"
             accept=".csv,text/csv"
+            multiple
             className="hidden"
-            onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+            onChange={(e) => e.target.files && handleFiles(Array.from(e.target.files))}
           />
         </label>
       )}
@@ -195,38 +239,61 @@ export function ImportWizard({ accounts }: { accounts: AccountOption[] }) {
         </div>
       )}
 
-      {headers.length > 0 && (mapping || aggregateLabel) && (
+      {headers.length > 0 && (mapping || aggregatePreset) && (
         <>
-          <div className="flex items-center justify-between rounded-md border border-border bg-surface px-4 py-3 text-sm">
-            <span className="text-text-muted">
-              {fileName} · {rows.length} row{rows.length === 1 ? "" : "s"}
-              {(presetLabel || aggregateLabel) && (
+          <div className="flex items-center justify-between gap-4 rounded-md border border-border bg-surface px-4 py-3 text-sm">
+            <span className="min-w-0 text-text-muted">
+              {aggregatePreset ? (
+                <span className="flex flex-col gap-0.5">
+                  {files.map((f) => (
+                    <span key={f.name} className="truncate">
+                      {f.name} · {f.rows.length} row{f.rows.length === 1 ? "" : "s"}
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                <>
+                  {primary.name} · {rows.length} row{rows.length === 1 ? "" : "s"}
+                </>
+              )}
+              {(presetLabel || aggregatePreset) && (
                 <span className="ml-2 rounded-full bg-accent/10 px-2 py-0.5 text-xs text-accent">
-                  Detected: {presetLabel ?? aggregateLabel}
+                  Detected: {presetLabel ?? aggregatePreset?.label}
                 </span>
               )}
             </span>
-            <button
-              onClick={() => {
-                setHeaders([]);
-                setRows([]);
-                setMapping(null);
-                setAggregateLabel(null);
-                setAggregatePresetId(null);
-                setFileName(null);
-              }}
-              className="text-text-faint hover:text-text"
-            >
-              Choose a different file
-            </button>
+            <span className="flex shrink-0 items-center gap-3">
+              {aggregatePreset && (
+                <label className="cursor-pointer text-accent hover:underline">
+                  Add file
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => e.target.files && handleFiles(Array.from(e.target.files))}
+                  />
+                </label>
+              )}
+              <button onClick={reset} className="text-text-faint hover:text-text">
+                Start over
+              </button>
+            </span>
           </div>
 
-          {aggregateLabel && (
+          {aggregatePreset && (
             <p className="rounded-md border border-border bg-surface px-4 py-3 text-sm text-text-muted">
-              This file lists individual executions (fills), not one row per trade — entries and
-              exits are automatically paired FIFO by symbol, in chronological order. There&apos;s
-              no column mapping to configure for this format.
+              {aggregatePreset.description} There&apos;s no column mapping to configure for this
+              format.
             </p>
+          )}
+
+          {parsed?.warnings && parsed.warnings.length > 0 && (
+            <ul className="space-y-1 rounded-md border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">
+              {parsed.warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
           )}
 
           <div className="grid grid-cols-2 gap-4">

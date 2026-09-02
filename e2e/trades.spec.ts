@@ -47,3 +47,37 @@ test("CSV import: maps columns and imports valid rows", async ({ page }) => {
   await expect(page.getByText("TSLA")).toBeVisible();
   await expect(page.getByText("NVDA")).toBeVisible();
 });
+
+test("TradingView paper trading: multi-file import pairs fills, then skips duplicates on re-import", async ({
+  page,
+}) => {
+  const files = ["order-history-all", "positions", "balance-history"].map((f) =>
+    path.join(__dirname, "fixtures", "tradingview", `paper-trading-${f}.csv`),
+  );
+
+  await page.goto("/trades/import");
+  await page.setInputFiles('input[type="file"]', files);
+
+  await expect(page.getByText("Detected: TradingView Paper Trading")).toBeVisible();
+  await expect(page.getByText("Map Columns")).not.toBeVisible();
+  await expect(page.getByText(/2 trades ready/)).toBeVisible();
+  // Continuous contract collapsed to its root, asset type picked up from the exchange.
+  await expect(page.getByLabel("Asset Type")).toHaveValue("futures");
+  await expect(page.getByText(/opened before the start of this order history export/)).toBeVisible();
+  await expect(page.getByText(/1 short still open/)).toBeVisible();
+  await expect(page.getByText(/doesn't match/)).not.toBeVisible();
+
+  await page.getByRole("button", { name: /Import \d+ Trades/ }).click();
+  await expect(page.getByText("Imported 2 trades")).toBeVisible();
+
+  // Same three files again: nothing new, nothing duplicated.
+  await page.goto("/trades/import");
+  await page.setInputFiles('input[type="file"]', files);
+  await page.getByRole("button", { name: /Import \d+ Trades/ }).click();
+  await expect(page.getByText("Nothing new to import")).toBeVisible();
+  await expect(page.getByText(/2 already in this account/)).toBeVisible();
+
+  await page.getByRole("button", { name: "Go to Trade Log" }).click();
+  await page.waitForURL("**/trades");
+  await expect(page.getByText("MNQ").first()).toBeVisible();
+});
