@@ -15,9 +15,10 @@ import {
 import { computeAdherenceStreak, isDayComplete } from "@/lib/analytics/progress";
 import { DashboardClient } from "@/components/dashboard/DashboardClient";
 import type { RecentTrade } from "@/components/dashboard/RecentTradesWidget";
+import { todayLocalKey } from "@/lib/date-key";
 
 export default async function DashboardPage() {
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = todayLocalKey();
   const [trades, startingBalance, dailyRules, todayStates, recentResults] = await Promise.all([
     getDashboardTrades(),
     getTotalStartingBalance(),

@@ -1,12 +1,21 @@
 import { prisma } from "@/lib/prisma";
+import { localDateKey, localDayRange } from "@/lib/date-key";
 
+/**
+ * Every trade that "touches" this local day — opened today (even if
+ * still open) or closed today. The calendar/dashboard's day P&L only
+ * ever counts trades by their close day (computeDailyPnl), so a trade
+ * opened today but closed tomorrow (or vice versa) still needs to show
+ * up here for the numbers to agree with what the calendar cell says —
+ * see JournalPage's dayNetPnl, which re-filters this list down to
+ * exactly the closed-today trades before summing.
+ */
 export async function getTradesForDate(dateKey: string) {
-  const start = new Date(`${dateKey}T00:00:00.000Z`);
-  const end = new Date(`${dateKey}T23:59:59.999Z`);
+  const { start, end } = localDayRange(dateKey);
   return prisma.trade.findMany({
     where: {
       isBacktest: false,
-      openedAt: { gte: start, lte: end },
+      OR: [{ openedAt: { gte: start, lte: end } }, { closedAt: { gte: start, lte: end } }],
     },
     include: { account: true },
     orderBy: { openedAt: "asc" },
@@ -25,6 +34,6 @@ export async function getTradingDayKeys() {
     where: { isBacktest: false },
     select: { openedAt: true },
   });
-  const keys = new Set(trades.map((t) => t.openedAt.toISOString().slice(0, 10)));
+  const keys = new Set(trades.map((t) => localDateKey(t.openedAt)));
   return Array.from(keys).sort();
 }

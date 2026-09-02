@@ -5,6 +5,7 @@ import { useTransition } from "react";
 import { Check } from "lucide-react";
 import { setTradeState } from "@/lib/actions/progress";
 import { formatDate } from "@/lib/format";
+import { localDateKey } from "@/lib/date-key";
 import { cn } from "@/lib/utils";
 
 type Rule = { id: string; name: string };
@@ -63,7 +64,7 @@ export function TradeChecklist({
                           await setTradeState(
                             r.id,
                             t.id,
-                            t.openedAt.toISOString().slice(0, 10),
+                            localDateKey(t.openedAt),
                             !(passed === true),
                           );
                           router.refresh();

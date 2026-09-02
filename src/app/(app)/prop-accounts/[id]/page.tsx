@@ -7,6 +7,7 @@ import { PropAccountActions } from "@/components/prop-accounts/PropAccountAction
 import { TransactionLog } from "@/components/prop-accounts/TransactionLog";
 import { PayoutLog } from "@/components/prop-accounts/PayoutLog";
 import { formatCurrency, formatDate, formatPercent } from "@/lib/format";
+import { todayLocalKey } from "@/lib/date-key";
 import { cn } from "@/lib/utils";
 
 export default async function PropAccountDetailPage(props: PageProps<"/prop-accounts/[id]">) {
@@ -14,7 +15,7 @@ export default async function PropAccountDetailPage(props: PageProps<"/prop-acco
   const propAccount = await getPropAccount(id);
   if (!propAccount) notFound();
 
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = todayLocalKey();
   const metrics = computePropAccountMetrics({
     accountSize: propAccount.accountSize,
     trades: propAccount.account.trades,

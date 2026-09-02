@@ -1,4 +1,5 @@
 import { computeDrawdown, computeEquityCurve, type StatsTrade } from "./stats";
+import { localDateKey } from "@/lib/date-key";
 
 export type PropAccountMetrics = {
   currentBalance: number;
@@ -30,7 +31,7 @@ export function computePropAccountMetrics(input: {
   const currentBalance = input.accountSize + netPnl + input.transactionTotal;
 
   const todayPnl = closed
-    .filter((t) => t.closedAt!.toISOString().slice(0, 10) === input.todayKey)
+    .filter((t) => localDateKey(t.closedAt!) === input.todayKey)
     .reduce((sum, t) => sum + t.netPnl, 0);
 
   const equityCurve = computeEquityCurve(closed, input.accountSize);

@@ -1,11 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { computePropAccountMetrics } from "./prop-account";
 
+// A bare "YYYY-MM-DD" string parses as UTC midnight, which localDateKey
+// (local-timezone-based, matching production) can roll back a calendar
+// day in any negative-UTC-offset environment. Build fixture dates the
+// same way the app does, so these tests aren't timezone-dependent.
+function localDate(s: string): Date {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 function trade(netPnl: number, closedAt: string | null) {
   return {
     netPnl,
-    openedAt: new Date(closedAt ?? "2026-01-01"),
-    closedAt: closedAt ? new Date(closedAt) : null,
+    openedAt: localDate(closedAt ?? "2026-01-01"),
+    closedAt: closedAt ? localDate(closedAt) : null,
   };
 }
 

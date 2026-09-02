@@ -1,3 +1,5 @@
+import { localDateKey } from "@/lib/date-key";
+
 export type StatsTrade = {
   netPnl: number;
   openedAt: Date;
@@ -75,11 +77,11 @@ export function computeEquityCurve(
 
   let running = startingBalance;
   const points: EquityPoint[] = [
-    { date: closed[0]?.closedAt?.toISOString().slice(0, 10) ?? dateKey(new Date()), equity: running },
+    { date: closed[0]?.closedAt ? localDateKey(closed[0].closedAt) : localDateKey(new Date()), equity: running },
   ];
   for (const t of closed) {
     running += t.netPnl;
-    points.push({ date: t.closedAt!.toISOString().slice(0, 10), equity: running });
+    points.push({ date: localDateKey(t.closedAt!), equity: running });
   }
   return points;
 }
@@ -105,16 +107,12 @@ export function computeDrawdown(equityCurve: EquityPoint[]): DrawdownResult {
   return { maxDrawdown, maxDrawdownPct, series };
 }
 
-function dateKey(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
-
 /** Sums realized net P&L per calendar day, keyed by the trade's close date. */
 export function computeDailyPnl(trades: StatsTrade[]): Map<string, number> {
   const map = new Map<string, number>();
   for (const t of trades) {
     if (!t.closedAt) continue;
-    const key = dateKey(t.closedAt);
+    const key = localDateKey(t.closedAt);
     map.set(key, (map.get(key) ?? 0) + t.netPnl);
   }
   return map;

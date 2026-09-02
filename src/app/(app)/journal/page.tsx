@@ -4,22 +4,26 @@ import { JournalDateNav } from "@/components/journal/JournalDateNav";
 import { DailyNoteEditor } from "@/components/journal/DailyNoteEditor";
 import { IntradayPnlChart, type IntradayPoint } from "@/components/journal/IntradayPnlChart";
 import { formatCurrency, formatDateTime } from "@/lib/format";
+import { localDayRange, todayLocalKey } from "@/lib/date-key";
 import { cn } from "@/lib/utils";
 
 export default async function JournalPage(props: PageProps<"/journal">) {
   const searchParams = await props.searchParams;
-  const dateKey =
-    typeof searchParams.date === "string"
-      ? searchParams.date
-      : new Date().toISOString().slice(0, 10);
+  const dateKey = typeof searchParams.date === "string" ? searchParams.date : todayLocalKey();
 
   const [trades, note] = await Promise.all([
     getTradesForDate(dateKey),
     getDailyNote(dateKey),
   ]);
 
+  // getTradesForDate returns everything that *touches* this day (opened
+  // today, closed today, or both) so the table has full context — but
+  // "Day net P&L" must only count trades that actually closed today, or
+  // it won't match the calendar cell this page was linked from (which
+  // groups purely by close day, same as computeDailyPnl everywhere else).
+  const { start: dayStart, end: dayEnd } = localDayRange(dateKey);
   const closed = trades
-    .filter((t) => t.closedAt)
+    .filter((t) => t.closedAt && t.closedAt >= dayStart && t.closedAt <= dayEnd)
     .sort((a, b) => a.closedAt!.getTime() - b.closedAt!.getTime());
 
   const intradayPoints: IntradayPoint[] = closed.reduce<IntradayPoint[]>((points, t) => {

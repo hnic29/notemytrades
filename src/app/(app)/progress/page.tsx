@@ -11,9 +11,10 @@ import { computeAdherenceStreak, isDayComplete } from "@/lib/analytics/progress"
 import { RuleManager } from "@/components/progress/RuleManager";
 import { DailyCheckin } from "@/components/progress/DailyCheckin";
 import { TradeChecklist } from "@/components/progress/TradeChecklist";
+import { todayLocalKey } from "@/lib/date-key";
 
 export default async function ProgressPage() {
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = todayLocalKey();
 
   const [rules, dailyRules, perTradeRules, todayStates, recentResults, recentTrades] =
     await Promise.all([

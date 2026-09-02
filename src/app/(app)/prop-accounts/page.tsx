@@ -3,11 +3,12 @@ import { Plus } from "lucide-react";
 import { listPropAccountsWithTrades } from "@/lib/queries/prop-accounts";
 import { computePropAccountMetrics } from "@/lib/analytics/prop-account";
 import { formatCurrency, formatPercent } from "@/lib/format";
+import { todayLocalKey } from "@/lib/date-key";
 import { cn } from "@/lib/utils";
 
 export default async function PropAccountsPage() {
   const propAccounts = await listPropAccountsWithTrades();
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = todayLocalKey();
 
   const rows = propAccounts.map((pa) => {
     const metrics = computePropAccountMetrics({
