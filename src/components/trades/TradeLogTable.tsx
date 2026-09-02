@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import Papa from "papaparse";
+import { downloadCsv } from "@/lib/csv";
 import {
   Trash2,
   Split,
@@ -190,16 +190,7 @@ export function TradeLogTable({
       account: t.account.name,
       tags: t.tags.map((tt) => tt.tag.name).join("|"),
     }));
-    const csv = Papa.unparse(rows);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `trade-log-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    downloadCsv(`trade-log-${new Date().toISOString().slice(0, 10)}.csv`, rows);
   };
 
   const col = (key: string) => visible[key] !== false;

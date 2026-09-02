@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { computeTradeMath, resolveClosedAt, type TradeSide } from "@/lib/trade-math";
+import { attachTags } from "@/lib/actions/tags";
 
 export type ManualTradeInput = {
   accountId: string;
@@ -66,23 +67,6 @@ function buildTradeData(input: ManualTradeInput) {
     strategyId: input.strategyId,
     source: "manual",
   };
-}
-
-async function attachTags(tradeId: string, tagNames: string[]) {
-  for (const raw of tagNames) {
-    const name = raw.trim();
-    if (!name) continue;
-    const tag = await prisma.tag.upsert({
-      where: { name },
-      update: {},
-      create: { name },
-    });
-    await prisma.tradeTag.upsert({
-      where: { tradeId_tagId: { tradeId, tagId: tag.id } },
-      update: {},
-      create: { tradeId, tagId: tag.id },
-    });
-  }
 }
 
 export async function createManualTrade(input: ManualTradeInput) {

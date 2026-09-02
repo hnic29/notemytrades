@@ -11,7 +11,8 @@ export async function getSession(id: string) {
   return prisma.backtestSession.findUnique({
     where: { id },
     include: {
-      trades: { orderBy: { openedAt: "asc" } },
+      trades: { orderBy: { openedAt: "asc" }, include: { tags: { include: { tag: true } } } },
+      orders: { where: { status: "pending" }, orderBy: { createdAt: "asc" } },
       account: { select: { startingBalance: true } },
     },
   });

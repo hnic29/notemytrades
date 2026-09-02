@@ -26,6 +26,7 @@ export async function getTradeById(id: string) {
       executions: { orderBy: { timestamp: "asc" } },
       tags: { include: { tag: true } },
       strategy: true,
+      note: true,
     },
   });
 }

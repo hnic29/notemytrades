@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Settings } from "lucide-react";
+import { HelpCircle, Settings } from "lucide-react";
 import { NAV_ITEMS } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
@@ -53,6 +53,19 @@ export function NavLinks({
         >
           <Settings className={cn("h-4 w-4 shrink-0", isActive("/settings") ? "text-accent" : "text-text-faint")} />
           Settings
+        </Link>
+        <Link
+          href="/help"
+          onClick={() => onNavigate("/help")}
+          className={cn(
+            "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
+            isActive("/help")
+              ? "bg-surface-2 text-text"
+              : "text-text-muted hover:bg-surface-2 hover:text-text",
+          )}
+        >
+          <HelpCircle className={cn("h-4 w-4 shrink-0", isActive("/help") ? "text-accent" : "text-text-faint")} />
+          Help Center
         </Link>
         <p className="px-3 pt-1 text-xs text-text-faint">Self-hosted · no subscription</p>
       </div>

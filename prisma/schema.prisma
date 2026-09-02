@@ -30,32 +30,36 @@ model Account {
 }
 
 model Trade {
-  id            String    @id @default(cuid())
-  accountId     String
-  account       Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  symbol        String
-  assetType     String // "stock" | "futures" | "forex" | "crypto" | "option"
-  side          String // "long" | "short"
-  status        String    @default("closed") // "open" | "closed"
-  openedAt      DateTime
-  closedAt      DateTime?
-  quantity      Float
-  multiplier    Float     @default(1) // point/contract value: futures ticks, options 100x, etc.
-  avgEntryPrice Float
-  avgExitPrice  Float?
-  grossPnl      Float     @default(0)
-  fees          Float     @default(0)
-  commissions   Float     @default(0)
-  netPnl        Float     @default(0)
-  netRoi        Float?
-  stopLoss      Float?
-  profitTarget  Float?
-  quickNote     String?
-  source        String? // "manual" | "csv:generic" | "csv:tradingview" | "csv:thinkorswim" | "csv:mt4" | ...
-  isBacktest    Boolean   @default(false)
-  shareSlug     String?   @unique
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  accountId      String
+  account        Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  symbol         String
+  assetType      String // "stock" | "futures" | "forex" | "crypto" | "option"
+  side           String // "long" | "short"
+  status         String    @default("closed") // "open" | "closed"
+  openedAt       DateTime
+  closedAt       DateTime?
+  quantity       Float
+  multiplier     Float     @default(1) // point/contract value: futures ticks, options 100x, etc.
+  avgEntryPrice  Float
+  avgExitPrice   Float?
+  grossPnl       Float     @default(0)
+  fees           Float     @default(0)
+  commissions    Float     @default(0)
+  netPnl         Float     @default(0)
+  netRoi         Float?
+  stopLoss       Float?
+  profitTarget   Float?
+  // Move stopLoss to avgEntryPrice once unrealized profit reaches this
+  // R-multiple. Only meaningful while the trade is open; harmless once
+  // closed. Currently only set/consumed by the backtesting order panel.
+  autoBreakevenR Float?
+  quickNote      String?
+  source         String? // "manual" | "csv:generic" | "csv:tradingview" | "csv:thinkorswim" | "csv:mt4" | ...
+  isBacktest     Boolean   @default(false)
+  shareSlug      String?   @unique
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   executions Execution[]
   tags       TradeTag[]
@@ -68,6 +72,10 @@ model Trade {
 
   backtestSessionId String?
   backtestSession   BacktestSession? @relation(fields: [backtestSessionId], references: [id])
+
+  // Reverse side of BacktestOrder.filledTrade — set once a pending
+  // order triggers and this Trade is the fill it produced.
+  filledFromOrder BacktestOrder?
 
   @@index([accountId])
   @@index([symbol])
@@ -110,6 +118,7 @@ model TradeTag {
 model Strategy {
   id          String   @id @default(cuid())
   name        String
+  assetType   String? // "stock" | "option" | "futures" | "forex" | "crypto" | "mixed" — null means unspecified
   description String?
   rulesJson   String? // JSON: [{ group: string, rules: string[] }]
   shareSlug   String?  @unique
@@ -268,14 +277,14 @@ model PropPayout {
 // id "singleton" rather than modeled as a list, since this app has
 // exactly one of these by design (single-user, single install).
 model AppSettings {
-  id          String    @id @default("singleton")
-  onboardedAt DateTime?
-  aiBaseUrl   String?
-  aiApiKey    String?
-  aiModel     String?
+  id              String    @id @default("singleton")
+  onboardedAt     DateTime?
+  aiBaseUrl       String?
+  aiApiKey        String?
+  aiModel         String?
   // Remote-debugging port TradingView Desktop was launched with (default 9222).
   tradingViewPort Int?
-  updatedAt   DateTime  @updatedAt
+  updatedAt       DateTime  @updatedAt
 }
 
 model BacktestSession {
@@ -284,6 +293,7 @@ model BacktestSession {
   account       Account? @relation(fields: [accountId], references: [id])
   name          String
   symbol        String
+  assetType     String   @default("stock") // "stock" | "crypto" | "forex" — matches lib/market-data/yahoo.ts's Timeframe support
   timeframe     String
   startDate     DateTime
   endDate       DateTime
@@ -293,4 +303,30 @@ model BacktestSession {
   createdAt     DateTime @default(now())
 
   trades Trade[]
+  orders BacktestOrder[]
+}
+
+// A limit/stop order the replay engine hasn't triggered yet. Kept
+// separate from Trade (rather than a third Trade.status) because every
+// stats function (computeSummaryStats, computeDetailedStats, every
+// Reports query) treats any Trade row as a real fill — a "pending"
+// Trade would silently corrupt all of those.
+model BacktestOrder {
+  id             String          @id @default(cuid())
+  sessionId      String
+  session        BacktestSession @relation(fields: [sessionId], references: [id])
+  symbol         String
+  side           String // "long" | "short"
+  orderType      String // "limit" | "stop"
+  triggerPrice   Float
+  quantity       Float
+  stopLoss       Float?
+  profitTarget   Float?
+  autoBreakevenR Float?
+  status         String          @default("pending") // "pending" | "filled" | "cancelled"
+  createdAt      DateTime        @default(now())
+  filledTradeId  String?         @unique
+  filledTrade    Trade?          @relation(fields: [filledTradeId], references: [id])
+
+  @@index([sessionId])
 }

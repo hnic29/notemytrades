@@ -38,14 +38,15 @@ afterAll(() => cleanup());
 describe("strategy actions", () => {
   it("createStrategy stores rules as JSON and round-trips them", async () => {
     const rules = [{ group: "Entry", rules: ["Above VWAP"] }];
-    const strategy = await actions.createStrategy({ name: "ORB", description: "", rules });
+    const strategy = await actions.createStrategy({ name: "ORB", assetType: null, description: "", rules });
     expect(JSON.parse(strategy.rulesJson ?? "[]")).toEqual(rules);
   });
 
   it("updateStrategy overwrites name/description/rules", async () => {
-    const strategy = await actions.createStrategy({ name: "Old", description: "", rules: [] });
+    const strategy = await actions.createStrategy({ name: "Old", assetType: null, description: "", rules: [] });
     const updated = await actions.updateStrategy(strategy.id, {
       name: "New",
+      assetType: "stock",
       description: "desc",
       rules: [{ group: "Exit", rules: ["2R target"] }],
     });
@@ -55,7 +56,7 @@ describe("strategy actions", () => {
   });
 
   it("deleteStrategy unassigns attached trades rather than orphaning them", async () => {
-    const strategy = await actions.createStrategy({ name: "Doomed", description: "", rules: [] });
+    const strategy = await actions.createStrategy({ name: "Doomed", assetType: null, description: "", rules: [] });
     const trade = await makeTrade(strategy.id);
 
     await actions.deleteStrategy(strategy.id);
@@ -65,7 +66,7 @@ describe("strategy actions", () => {
   });
 
   it("assignTradeToStrategy sets and clears strategyId", async () => {
-    const strategy = await actions.createStrategy({ name: "S", description: "", rules: [] });
+    const strategy = await actions.createStrategy({ name: "S", assetType: null, description: "", rules: [] });
     const trade = await makeTrade();
 
     await actions.assignTradeToStrategy(trade.id, strategy.id);
@@ -76,14 +77,14 @@ describe("strategy actions", () => {
   });
 
   it("logMissedTrade uppercases the symbol", async () => {
-    const strategy = await actions.createStrategy({ name: "S", description: "", rules: [] });
+    const strategy = await actions.createStrategy({ name: "S", assetType: null, description: "", rules: [] });
     await actions.logMissedTrade(strategy.id, { symbol: "aapl", notes: "", occurredAt: "2026-01-01" });
     const missed = await prisma.missedTrade.findMany({ where: { strategyId: strategy.id } });
     expect(missed[0].symbol).toBe("AAPL");
   });
 
   it("deleteMissedTrade removes only the given row", async () => {
-    const strategy = await actions.createStrategy({ name: "S", description: "", rules: [] });
+    const strategy = await actions.createStrategy({ name: "S", assetType: null, description: "", rules: [] });
     await actions.logMissedTrade(strategy.id, { symbol: "A", notes: "", occurredAt: "2026-01-01" });
     const [missed] = await prisma.missedTrade.findMany({ where: { strategyId: strategy.id } });
     await actions.deleteMissedTrade(missed.id, strategy.id);
@@ -91,7 +92,7 @@ describe("strategy actions", () => {
   });
 
   it("generateStrategyShareLink is idempotent", async () => {
-    const strategy = await actions.createStrategy({ name: "S", description: "", rules: [] });
+    const strategy = await actions.createStrategy({ name: "S", assetType: null, description: "", rules: [] });
     const first = await actions.generateStrategyShareLink(strategy.id);
     const second = await actions.generateStrategyShareLink(strategy.id);
     expect(second).toBe(first);

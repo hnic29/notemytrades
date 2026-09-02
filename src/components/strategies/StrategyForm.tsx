@@ -11,19 +11,32 @@ const STARTER_RULES: RuleGroup[] = [
   { group: "Exit Rules", rules: [""] },
 ];
 
+const ASSET_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "Unspecified" },
+  { value: "stock", label: "Stocks" },
+  { value: "option", label: "Options" },
+  { value: "futures", label: "Futures" },
+  { value: "forex", label: "Forex" },
+  { value: "crypto", label: "Crypto" },
+  { value: "mixed", label: "Any Market" },
+];
+
 export function StrategyForm({
   strategyId,
   initialName = "",
+  initialAssetType = "",
   initialDescription = "",
   initialRules = STARTER_RULES,
 }: {
   strategyId?: string;
   initialName?: string;
+  initialAssetType?: string;
   initialDescription?: string;
   initialRules?: RuleGroup[];
 }) {
   const router = useRouter();
   const [name, setName] = useState(initialName);
+  const [assetType, setAssetType] = useState(initialAssetType);
   const [description, setDescription] = useState(initialDescription);
   const [rules, setRules] = useState<RuleGroup[]>(initialRules);
   const [error, setError] = useState<string | null>(null);
@@ -39,9 +52,10 @@ export function StrategyForm({
         const cleanRules = rules
           .map((g) => ({ group: g.group.trim() || "Untitled Group", rules: g.rules.filter((r) => r.trim()) }))
           .filter((g) => g.group);
+        const input = { name, assetType: assetType || null, description, rules: cleanRules };
         const strategy = strategyId
-          ? await updateStrategy(strategyId, { name, description, rules: cleanRules })
-          : await createStrategy({ name, description, rules: cleanRules });
+          ? await updateStrategy(strategyId, input)
+          : await createStrategy(input);
         router.push(`/strategies/${strategy.id}`);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to save strategy");
@@ -65,6 +79,21 @@ export function StrategyForm({
           placeholder="e.g. Opening Range Breakout"
           className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-text outline-none focus:border-accent"
         />
+      </label>
+
+      <label className="block">
+        <span className="mb-1 block text-xs font-medium text-text-muted">Asset Class</span>
+        <select
+          value={assetType}
+          onChange={(e) => setAssetType(e.target.value)}
+          className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-text outline-none focus:border-accent"
+        >
+          {ASSET_TYPE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
       </label>
 
       <label className="block">

@@ -7,12 +7,14 @@ import type { RuleGroup } from "@/lib/queries/strategies";
 
 export async function createStrategy(input: {
   name: string;
+  assetType: string | null;
   description: string;
   rules: RuleGroup[];
 }) {
   const strategy = await prisma.strategy.create({
     data: {
       name: input.name,
+      assetType: input.assetType,
       description: input.description || null,
       rulesJson: JSON.stringify(input.rules),
     },
@@ -23,12 +25,13 @@ export async function createStrategy(input: {
 
 export async function updateStrategy(
   id: string,
-  input: { name: string; description: string; rules: RuleGroup[] },
+  input: { name: string; assetType: string | null; description: string; rules: RuleGroup[] },
 ) {
   const strategy = await prisma.strategy.update({
     where: { id },
     data: {
       name: input.name,
+      assetType: input.assetType,
       description: input.description || null,
       rulesJson: JSON.stringify(input.rules),
     },

@@ -13,6 +13,7 @@ export default async function EditStrategyPage(props: PageProps<"/strategies/[id
       <StrategyForm
         strategyId={strategy.id}
         initialName={strategy.name}
+        initialAssetType={strategy.assetType ?? ""}
         initialDescription={strategy.description ?? ""}
         initialRules={parseRules(strategy.rulesJson)}
       />

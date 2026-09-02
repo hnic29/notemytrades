@@ -15,6 +15,7 @@ export function SessionForm() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
+  const [assetType, setAssetType] = useState<"stock" | "crypto" | "forex">("stock");
   const [timeframe, setTimeframe] = useState<Timeframe>("5m");
   const [startDate, setStartDate] = useState(daysAgo(5));
   const [endDate, setEndDate] = useState(daysAgo(0));
@@ -30,7 +31,7 @@ export function SessionForm() {
 
     startTransition(async () => {
       try {
-        const session = await createSession({ name, symbol, timeframe, startDate, endDate });
+        const session = await createSession({ name, symbol, assetType, timeframe, startDate, endDate });
         router.push(`/backtesting/${session.id}`);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to create session");
@@ -59,9 +60,28 @@ export function SessionForm() {
         <input
           value={symbol}
           onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-          placeholder="AAPL"
+          placeholder={
+            assetType === "crypto" ? "BTC" : assetType === "forex" ? "EURUSD" : "AAPL"
+          }
           className={inputClass}
         />
+        {assetType === "forex" && (
+          <p className="mt-1 text-xs text-text-faint">
+            Six-letter pair, base then quote — e.g. EURUSD, GBPJPY.
+          </p>
+        )}
+      </Field>
+
+      <Field label="Asset Type">
+        <select
+          value={assetType}
+          onChange={(e) => setAssetType(e.target.value as "stock" | "crypto" | "forex")}
+          className={inputClass}
+        >
+          <option value="stock">Stock</option>
+          <option value="crypto">Crypto</option>
+          <option value="forex">Forex</option>
+        </select>
       </Field>
 
       <Field label="Timeframe">

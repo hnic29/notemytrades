@@ -139,6 +139,15 @@ export default async function TradeDetailPage(props: PageProps<"/trades/[id]">) 
           <p className="whitespace-pre-wrap text-sm text-text">{trade.quickNote}</p>
         </div>
       )}
+
+      {trade.note && (
+        <div className="mt-6 rounded-lg border border-border bg-surface p-4">
+          <h2 className="mb-2 text-sm font-medium text-text-muted">Linked Notebook Entry</h2>
+          <Link href={`/notebook?note=${trade.note.id}`} className="text-sm text-accent hover:underline">
+            {trade.note.title || "Untitled note"}
+          </Link>
+        </div>
+      )}
     </div>
   );
 }
