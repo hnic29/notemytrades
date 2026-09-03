@@ -329,7 +329,7 @@ model BacktestSession {
   account       Account? @relation(fields: [accountId], references: [id])
   name          String
   symbol        String
-  assetType     String   @default("stock") // "stock" | "crypto" | "forex" — matches lib/market-data/yahoo.ts's Timeframe support
+  assetType     String   @default("stock") // "stock" | "crypto" | "forex" | "futures" — matches lib/market-data/yahoo.ts's toYahooSymbol
   timeframe     String
   startDate     DateTime
   endDate       DateTime

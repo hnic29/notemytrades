@@ -15,7 +15,7 @@ export function SessionForm() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
-  const [assetType, setAssetType] = useState<"stock" | "crypto" | "forex">("stock");
+  const [assetType, setAssetType] = useState<"stock" | "crypto" | "forex" | "futures">("stock");
   const [timeframe, setTimeframe] = useState<Timeframe>("5m");
   const [startDate, setStartDate] = useState(daysAgo(5));
   const [endDate, setEndDate] = useState(daysAgo(0));
@@ -61,7 +61,13 @@ export function SessionForm() {
           value={symbol}
           onChange={(e) => setSymbol(e.target.value.toUpperCase())}
           placeholder={
-            assetType === "crypto" ? "BTC" : assetType === "forex" ? "EURUSD" : "AAPL"
+            assetType === "crypto"
+              ? "BTC"
+              : assetType === "forex"
+                ? "EURUSD"
+                : assetType === "futures"
+                  ? "MNQ"
+                  : "AAPL"
           }
           className={inputClass}
         />
@@ -70,17 +76,23 @@ export function SessionForm() {
             Six-letter pair, base then quote — e.g. EURUSD, GBPJPY.
           </p>
         )}
+        {assetType === "futures" && (
+          <p className="mt-1 text-xs text-text-faint">
+            Root symbol only — e.g. MNQ, ES, GC, CL. Pulls the continuous front-month contract.
+          </p>
+        )}
       </Field>
 
       <Field label="Asset Type">
         <select
           value={assetType}
-          onChange={(e) => setAssetType(e.target.value as "stock" | "crypto" | "forex")}
+          onChange={(e) => setAssetType(e.target.value as "stock" | "crypto" | "forex" | "futures")}
           className={inputClass}
         >
           <option value="stock">Stock</option>
           <option value="crypto">Crypto</option>
           <option value="forex">Forex</option>
+          <option value="futures">Futures</option>
         </select>
       </Field>
 

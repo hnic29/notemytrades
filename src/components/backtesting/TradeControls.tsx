@@ -33,6 +33,7 @@ export function TradeControls({
   currentCandle,
   openTrade,
   currentBalance,
+  multiplier,
   onOpen,
   onPlaceOrder,
   onClose,
@@ -43,6 +44,10 @@ export function TradeControls({
    * quantity from a risk-% preset. Falls back to disabling the presets
    * (rather than sizing off $0) when no account balance is known. */
   currentBalance: number;
+  /** $ value of a one-point move for one unit — 1 for stock/crypto/forex,
+   * a contract's point value for futures. The session trades one symbol
+   * throughout, so this is constant for the whole panel. */
+  multiplier: number;
   /** Market orders — fills instantly at the current candle's close. */
   onOpen: (input: OpenOrderInput) => Promise<void>;
   /** Limit/stop orders — sits pending until a later candle triggers it. */
@@ -70,18 +75,19 @@ export function TradeControls({
     riskPerShare != null && riskPerShare > 0 && rewardPerShare != null
       ? rewardPerShare / riskPerShare
       : null;
-  const liveRiskDollars = riskPerShare != null ? riskPerShare * quantity : null;
+  const liveRiskDollars = riskPerShare != null ? riskPerShare * quantity * multiplier : null;
 
   const applyRiskPreset = (pct: number) => {
     if (riskPerShare == null || riskPerShare <= 0 || currentBalance <= 0) return;
     const riskDollars = currentBalance * (pct / 100);
-    const nextQty = Math.max(1, Math.floor(riskDollars / riskPerShare));
+    const nextQty = Math.max(1, Math.floor(riskDollars / (riskPerShare * multiplier)));
     setQuantity(nextQty);
   };
 
   const unrealized = openTrade
     ? (currentCandle.close - openTrade.avgEntryPrice) *
       openTrade.quantity *
+      multiplier *
       (openTrade.side === "long" ? 1 : -1)
     : null;
 

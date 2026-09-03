@@ -52,11 +52,14 @@ export default async function TradeReplayPage(props: PageProps<"/trades/[id]/rep
           avgEntryPrice: trade.avgEntryPrice,
           avgExitPrice: trade.avgExitPrice,
           symbol: trade.symbol,
+          assetType: trade.assetType,
           quantity: trade.quantity,
           netPnl: trade.netPnl,
           netRoi: trade.netRoi,
           executions: trade.executions,
         }}
+        windowStart={new Date(windowStart * 1000).toISOString()}
+        windowEnd={new Date(windowEnd * 1000).toISOString()}
       />
     </div>
   );

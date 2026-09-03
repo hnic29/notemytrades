@@ -60,6 +60,7 @@ export async function chatComplete(
         model: config.model,
         messages,
         temperature: opts?.temperature ?? 0.4,
+        stream: false,
       }),
       cache: "no-store",
     });

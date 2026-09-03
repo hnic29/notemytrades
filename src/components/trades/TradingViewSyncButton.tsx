@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { CheckCircle2, Loader2, Play, RefreshCw, X, XCircle } from "lucide-react";
 import {
   launchTradingViewDesktop,
@@ -22,6 +22,31 @@ type AccountOption = { id: string; name: string };
  * different accounts before this existed. */
 const LAST_SYNC_ACCOUNT_KEY = "tradingview-sync-last-account-id";
 
+/** Whether auto-sync is turned on — remembered per browser, same as the
+ * account choice above, so it stays on across visits without a DB migration. */
+const AUTO_SYNC_KEY = "tradingview-sync-auto-enabled";
+const AUTO_SYNC_INTERVAL_MS = 10 * 60 * 1000;
+
+function loadDefaultAccountId(accounts: AccountOption[]): string {
+  if (typeof window === "undefined") return accounts[0]?.id ?? "";
+  try {
+    const remembered = localStorage.getItem(LAST_SYNC_ACCOUNT_KEY);
+    if (remembered && accounts.some((a) => a.id === remembered)) return remembered;
+  } catch {
+    // Private browsing / storage disabled — fall back to the default.
+  }
+  return accounts[0]?.id ?? "";
+}
+
+function loadAutoSyncPref(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return localStorage.getItem(AUTO_SYNC_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * "Sync from TradingView": one click pulls Paper Trading's fills
  * straight out of the running TradingView Desktop — no export, no
@@ -40,11 +65,54 @@ export function TradingViewSyncButton({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
+  const [accountId, setAccountId] = useState(() => loadDefaultAccountId(accounts));
   const [result, setResult] = useState<TradingViewSyncResult | null>(null);
   const [launchNote, setLaunchNote] = useState<string | null>(null);
+  const [autoSync, setAutoSync] = useState(loadAutoSyncPref);
+  const [lastAutoSync, setLastAutoSync] = useState<Date | null>(null);
+  const [mounted, setMounted] = useState(false);
   const [isSyncing, startSync] = useTransition();
   const [isLaunching, startLaunch] = useTransition();
+
+  // Standard hydration-safe mount flag — the auto-sync indicator next to
+  // the button (unlike the dialog, which never renders during SSR) reads
+  // localStorage-derived state, so it must match the SSR default on first
+  // paint and only switch client-side. See DashboardClient for the same pattern.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => setMounted(true), []);
+
+  // Ticks every 10 minutes while auto-sync is on and this page (wherever
+  // the button lives) stays mounted. Silent unless the dialog is open —
+  // it only surfaces a result there, otherwise just updates "last synced".
+  useEffect(() => {
+    if (!autoSync || !accountId) return;
+    const id = setInterval(() => {
+      startSync(async () => {
+        const r = await syncFromTradingView(accountId);
+        setLastAutoSync(new Date());
+        if (open) setResult(r);
+        if (r.ok && r.imported > 0) router.refresh();
+      });
+    }, AUTO_SYNC_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [autoSync, accountId, open, router]);
+
+  const toggleAutoSync = (enabled: boolean) => {
+    setAutoSync(enabled);
+    try {
+      localStorage.setItem(AUTO_SYNC_KEY, enabled ? "1" : "0");
+    } catch {
+      // Non-fatal — just means the preference won't stick next time.
+    }
+    if (enabled && accountId) {
+      startSync(async () => {
+        const r = await syncFromTradingView(accountId);
+        setLastAutoSync(new Date());
+        setResult(r);
+        if (r.ok && r.imported > 0) router.refresh();
+      });
+    }
+  };
 
   const openDialog = () => {
     try {
@@ -130,6 +198,12 @@ export function TradingViewSyncButton({
       >
         <RefreshCw className="h-4 w-4" /> Sync from TradingView
       </button>
+      {mounted && autoSync && (
+        <span className="ml-2 text-xs text-text-faint">
+          Auto-sync every 10 min
+          {lastAutoSync && <> · last {lastAutoSync.toLocaleTimeString()}</>}
+        </span>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -174,6 +248,26 @@ export function TradingViewSyncButton({
                     ))}
                   </select>
                 </label>
+              )}
+
+              <label className="flex items-center gap-2 text-sm text-text">
+                <input
+                  type="checkbox"
+                  checked={autoSync}
+                  onChange={(e) => toggleAutoSync(e.target.checked)}
+                  disabled={!accountId}
+                  className="h-4 w-4 rounded border-border-strong"
+                />
+                Auto-sync every 10 minutes
+                {autoSync && lastAutoSync && (
+                  <span className="text-xs text-text-faint">· last {lastAutoSync.toLocaleTimeString()}</span>
+                )}
+              </label>
+              {autoSync && (
+                <p className="text-xs text-text-faint">
+                  Keeps syncing every 10 minutes while this app is open in a browser tab, even after you
+                  close this dialog. Needs TradingView Desktop running.
+                </p>
               )}
 
               {launchNote && (

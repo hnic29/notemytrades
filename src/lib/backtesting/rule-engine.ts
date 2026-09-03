@@ -89,8 +89,14 @@ function checkExit(
   return null;
 }
 
-function sizeByRisk(startingBalance: number, riskPercent: number, entryPrice: number, stopPrice: number): number {
-  const riskPerUnit = Math.abs(entryPrice - stopPrice);
+function sizeByRisk(
+  startingBalance: number,
+  riskPercent: number,
+  entryPrice: number,
+  stopPrice: number,
+  multiplier: number,
+): number {
+  const riskPerUnit = Math.abs(entryPrice - stopPrice) * multiplier;
   if (riskPerUnit <= 0) return 0;
   const riskDollars = startingBalance * (riskPercent / 100);
   return Math.max(0, Math.floor(riskDollars / riskPerUnit));
@@ -107,6 +113,7 @@ export function runRuleBacktest(
   candles: Candle[],
   rule: BacktestRule,
   startingBalance: number,
+  multiplier: number = 1,
 ): RuleEngineResult {
   const leftSeries = resolveSeries(rule.entry.left, candles);
   const rightIsValue = rule.entry.right.type === "value";
@@ -157,7 +164,7 @@ export function runRuleBacktest(
     const quantity =
       rule.positionSizing.type === "fixedQuantity"
         ? rule.positionSizing.quantity
-        : sizeByRisk(startingBalance, rule.positionSizing.percent, entryPrice, stopPrice!);
+        : sizeByRisk(startingBalance, rule.positionSizing.percent, entryPrice, stopPrice!, multiplier);
     if (quantity <= 0) continue;
 
     openTrade = { entryIndex: i, entryPrice, quantity, stopPrice, targetPrice };

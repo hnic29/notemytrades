@@ -1,4 +1,18 @@
+import { getFuturesPointValue } from "@/lib/import/futures";
 import type { TradeSide } from "@/lib/trade-math";
+
+/**
+ * A backtest session trades a single symbol for its whole lifetime, so
+ * this is really "the session's point value" rather than a per-order
+ * choice — stock/crypto/forex stay 1 (share/unit-based), futures use
+ * the contract's $-per-point from the same table CSV import uses.
+ * An unrecognized futures root falls back to 1, same as CSV import —
+ * callers should warn when that happens rather than trust it silently.
+ */
+export function resolveMultiplier(symbol: string, assetType: string): number {
+  if (assetType !== "futures") return 1;
+  return getFuturesPointValue(symbol) ?? 1;
+}
 
 export type BuildBacktestTradeInput = {
   accountId: string;
@@ -32,6 +46,7 @@ export function buildBacktestTradeCreateData(input: BuildBacktestTradeInput) {
     openedAt: input.entryTime,
     closedAt: null,
     quantity: input.quantity,
+    multiplier: resolveMultiplier(input.symbol, input.assetType),
     avgEntryPrice: input.entryPrice,
     avgExitPrice: null,
     grossPnl: 0,

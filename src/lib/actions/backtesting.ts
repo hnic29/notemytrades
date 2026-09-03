@@ -7,7 +7,7 @@ import { computeTradeMath, resolveClosedAt, type TradeSide } from "@/lib/trade-m
 import { getOrCreateBacktestAccount } from "@/lib/actions/accounts";
 import { checkAutoBreakeven, evaluateOrderFill } from "@/lib/backtesting/order-engine";
 import { getSessionCandles } from "@/lib/backtesting/session-candles";
-import { buildBacktestTradeCreateData } from "@/lib/backtesting/trade-factory";
+import { buildBacktestTradeCreateData, resolveMultiplier } from "@/lib/backtesting/trade-factory";
 import { runRuleBacktest } from "@/lib/backtesting/rule-engine";
 import { BacktestRuleSchema, type BacktestRule } from "@/lib/backtesting/rule-schema";
 import type { Candle, Timeframe } from "@/lib/market-data/yahoo";
@@ -309,7 +309,8 @@ export async function runAutoBacktest(
     throw new Error("No candle data available for this session's symbol/timeframe/date range.");
   }
 
-  const result = runRuleBacktest(candles, validRule, account.startingBalance);
+  const multiplier = resolveMultiplier(session.symbol, assetType);
+  const result = runRuleBacktest(candles, validRule, account.startingBalance, multiplier);
   if (result.trades.length === 0) {
     return { tradesCreated: 0 };
   }
@@ -321,7 +322,7 @@ export async function runAutoBacktest(
       const math = computeTradeMath({
         side: t.side,
         quantity: t.quantity,
-        multiplier: 1,
+        multiplier,
         avgEntryPrice: t.entryPrice,
         avgExitPrice: t.exitPrice,
         fees: 0,

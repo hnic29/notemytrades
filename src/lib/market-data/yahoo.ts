@@ -134,5 +134,9 @@ function toYahooSymbol(symbol: string, assetType: string): string | null {
   if (assetType === "forex" && s.length === 6) {
     return `${s.slice(0, 3)}${s.slice(3)}=X`;
   }
+  // Yahoo's continuous front-month contract for a root symbol, e.g.
+  // "MNQ" -> "MNQ=F", "ES" -> "ES=F". Tolerate the suffix already being
+  // typed so pasting a symbol back in doesn't double it up.
+  if (assetType === "futures") return `${s.replace(/=F$/, "")}=F`;
   return null;
 }

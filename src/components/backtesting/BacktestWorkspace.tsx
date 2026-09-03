@@ -32,6 +32,8 @@ import { bySide, byHourOfDay, computeRiskMetrics } from "@/lib/analytics/groupin
 import { computeRiskRatios } from "@/lib/analytics/risk-ratios";
 import { computeDrawdown, computeEquityCurve, computeSummaryStats } from "@/lib/analytics/stats";
 import { toReportTrades } from "@/lib/backtesting/report-adapters";
+import { resolveMultiplier } from "@/lib/backtesting/trade-factory";
+import { getFuturesPointValue } from "@/lib/import/futures";
 import { downloadCsv } from "@/lib/csv";
 import { formatCurrency, formatDateTime, formatPercent } from "@/lib/format";
 import { TIMEFRAME_OPTIONS, type Candle, type Timeframe } from "@/lib/market-data/yahoo";
@@ -125,6 +127,9 @@ export function BacktestWorkspace({
   const visibleCandles = candles.slice(0, visibleCount);
   const currentCandle = visibleCandles[visibleCandles.length - 1] ?? null;
   const openTrade = trades.find((t) => t.avgExitPrice == null) ?? null;
+
+  const multiplier = resolveMultiplier(symbol, assetType);
+  const unknownFuturesRoot = assetType === "futures" && getFuturesPointValue(symbol) == null;
 
   const stats = useMemo(() => computeSummaryStats(trades), [trades]);
   const reportTrades = useMemo(() => toReportTrades(trades), [trades]);
@@ -481,6 +486,13 @@ export function BacktestWorkspace({
             />
           </div>
 
+          {unknownFuturesRoot && (
+            <p className="mb-4 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+              Don&apos;t recognize {symbol}&apos;s point value — using $1 per point as a fallback, so
+              P&amp;L and risk sizing here won&apos;t match the real contract.
+            </p>
+          )}
+
           <PendingOrdersPanel orders={pendingOrders} onCancel={handleCancelOrder} />
 
           <div className="mb-6">
@@ -488,6 +500,7 @@ export function BacktestWorkspace({
               currentCandle={currentCandle}
               openTrade={openTrade}
               currentBalance={startingBalance + stats.netPnl}
+              multiplier={multiplier}
               onOpen={handleOpen}
               onPlaceOrder={handlePlaceOrder}
               onClose={handleClose}

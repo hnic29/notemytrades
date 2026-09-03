@@ -9,6 +9,7 @@ import {
   Target,
   Building2,
   History,
+  PlayCircle,
   Sparkles,
   PiggyBank,
 } from "lucide-react";
@@ -23,6 +24,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Daily Journal", href: "/journal", icon: BookOpen },
   { label: "Trade Log", href: "/trades", icon: ListOrdered },
+  { label: "Trade Replay", href: "/trades/replay", icon: PlayCircle },
   { label: "Notebook", href: "/notebook", icon: NotebookPen },
   { label: "Reports", href: "/reports", icon: BarChart3 },
   { label: "Strategies", href: "/strategies", icon: ClipboardList },
