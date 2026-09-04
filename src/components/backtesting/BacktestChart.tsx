@@ -515,9 +515,12 @@ export function BacktestChart({
         ))}
       </div>
 
-      <div className="flex items-start gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
         {onCreateDrawing && (
-          <div className="flex flex-col items-center gap-1 rounded-md border border-border bg-surface-2 p-1">
+          // Horizontal, wrapping row on narrow screens — a vertical strip
+          // there would eat too much of an already-narrow chart's width.
+          // From `sm` up it's the usual TradingView-style left-side column.
+          <div className="flex flex-row flex-wrap items-center gap-1 rounded-md border border-border bg-surface-2 p-1 sm:flex-col">
             <ToolButton active={tool === "cursor"} onClick={() => selectTool("cursor")} title="Cursor">
               <MousePointer2 className="h-3.5 w-3.5" />
             </ToolButton>
@@ -555,7 +558,7 @@ export function BacktestChart({
             </ToolButton>
             {onClearDrawings && (
               <>
-                <div className="my-0.5 h-px w-5 bg-border" />
+                <div className="mx-0.5 h-5 w-px bg-border sm:mx-0 sm:my-0.5 sm:h-px sm:w-5" />
                 <button
                   type="button"
                   onClick={onClearDrawings}
