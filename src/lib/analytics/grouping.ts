@@ -17,6 +17,43 @@ export type ReportTrade = StatsTrade & {
 
 export type Group = { key: string; label: string; stats: SummaryStats };
 
+export type RiskAwareTrade = StatsTrade & {
+  avgEntryPrice: number;
+  stopLoss: number | null;
+  quantity: number;
+  multiplier: number;
+};
+
+/** A trade's realized P&L divided by its own planned $ risk (entry-to-
+ * stop distance, sized by quantity and multiplier) — null when there's
+ * no stop loss to define that risk, same "no basis for comparison"
+ * rule computeRiskMetrics uses. */
+export function computeRMultiple(trade: RiskAwareTrade): number | null {
+  if (trade.stopLoss == null || trade.closedAt == null) return null;
+  const riskPerUnit = Math.abs(trade.avgEntryPrice - trade.stopLoss);
+  const plannedRisk = riskPerUnit * trade.quantity * trade.multiplier;
+  if (plannedRisk <= 0) return null;
+  return trade.netPnl / plannedRisk;
+}
+
+/**
+ * Substitutes each trade's dollar netPnl with its R-multiple — the
+ * "R-Multiple" dashboard view mode runs the same aggregate functions
+ * (computeSummaryStats, computeEquityCurve, computeDailyPnl, …) over
+ * this in place of the normal dollar trades. Trades with no defined R
+ * (computeRMultiple returns null) are dropped entirely rather than
+ * guessed at.
+ */
+export function toRMultipleTrades<T extends RiskAwareTrade>(trades: T[]): T[] {
+  const out: T[] = [];
+  for (const t of trades) {
+    const r = computeRMultiple(t);
+    if (r == null) continue;
+    out.push({ ...t, netPnl: r });
+  }
+  return out;
+}
+
 /**
  * Buckets trades by a key-extraction function and computes summary
  * stats per bucket. A trade contributing to multiple buckets (e.g. tags)

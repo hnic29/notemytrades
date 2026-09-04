@@ -6,7 +6,12 @@ import {
   computeSummaryStats,
   computeTradeScore,
 } from "@/lib/analytics/stats";
-import { getDashboardTrades, getTotalStartingBalance } from "@/lib/queries/dashboard";
+import { computeRMultiple, toRMultipleTrades } from "@/lib/analytics/grouping";
+import {
+  getDashboardTrades,
+  getJournaledDateKeys,
+  getTotalStartingBalance,
+} from "@/lib/queries/dashboard";
 import {
   getStatesForDate,
   listActiveDailyRules,
@@ -19,13 +24,15 @@ import { todayLocalKey } from "@/lib/date-key";
 
 export default async function DashboardPage() {
   const todayKey = todayLocalKey();
-  const [trades, startingBalance, dailyRules, todayStates, recentResults] = await Promise.all([
-    getDashboardTrades(),
-    getTotalStartingBalance(),
-    listActiveDailyRules(),
-    getStatesForDate(todayKey),
-    listRecentDailyResults(),
-  ]);
+  const [trades, startingBalance, dailyRules, todayStates, recentResults, journaledDates] =
+    await Promise.all([
+      getDashboardTrades(),
+      getTotalStartingBalance(),
+      listActiveDailyRules(),
+      getStatesForDate(todayKey),
+      listRecentDailyResults(),
+      getJournaledDateKeys(),
+    ]);
 
   const stats = computeSummaryStats(trades);
   const equityCurve = computeEquityCurve(trades, startingBalance);
@@ -34,6 +41,17 @@ export default async function DashboardPage() {
   const dailyPnl = Object.fromEntries(dailyPnlMap);
   const dayStreak = computeDayStreak(dailyPnlMap);
   const tradeScore = computeTradeScore(stats, drawdown, Array.from(dailyPnlMap.values()));
+
+  // The "R-Multiple" dashboard view mode swaps every dollar-denominated
+  // widget for the same aggregates run over R-substituted trades —
+  // starting balance is meaningless in R terms, so the equity curve
+  // starts at 0 rather than an account balance.
+  const rTrades = toRMultipleTrades(trades);
+  const rStats = computeSummaryStats(rTrades);
+  const rEquityCurve = computeEquityCurve(rTrades, 0);
+  const rDrawdown = computeDrawdown(rEquityCurve);
+  const rDailyPnlMap = computeDailyPnl(rTrades);
+  const rDailyPnl = Object.fromEntries(rDailyPnlMap);
 
   const recentTrades: RecentTrade[] = trades
     .filter((t) => t.closedAt != null)
@@ -44,6 +62,7 @@ export default async function DashboardPage() {
       symbol: t.symbol,
       openedAt: t.openedAt,
       netPnl: t.netPnl,
+      rMultiple: computeRMultiple(t),
       status: t.netPnl >= 0 ? "win" : "loss",
     }));
 
@@ -55,6 +74,7 @@ export default async function DashboardPage() {
       symbol: t.symbol,
       openedAt: t.openedAt,
       netPnl: t.netPnl,
+      rMultiple: computeRMultiple(t),
       status: "open",
     }));
 
@@ -78,10 +98,15 @@ export default async function DashboardPage() {
         equityCurve={equityCurve}
         drawdownSeries={drawdown.series}
         dailyPnl={dailyPnl}
+        rStats={rStats}
+        rEquityCurve={rEquityCurve}
+        rDrawdownSeries={rDrawdown.series}
+        rDailyPnl={rDailyPnl}
         startingBalance={startingBalance}
         progress={progress}
         recentTrades={recentTrades}
         openPositions={openPositions}
+        journaledDates={Array.from(journaledDates)}
       />
     </div>
   );

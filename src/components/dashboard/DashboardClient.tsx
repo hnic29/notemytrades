@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Settings2, GripVertical } from "lucide-react";
+import { Settings2, GripVertical, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StatCard } from "./StatCard";
 import { EquityCurveChart } from "./EquityCurveChart";
@@ -10,9 +10,16 @@ import { CalendarHeatmap } from "./CalendarHeatmap";
 import { TradeScoreGauge } from "./TradeScoreGauge";
 import { RingStat } from "./RingStat";
 import { RecentTradesWidget, type RecentTrade } from "./RecentTradesWidget";
-import { formatCurrency, formatPercent } from "@/lib/format";
+import { formatDashboardValue, formatPercent, type DashboardViewMode } from "@/lib/format";
 import type { EquityPoint, SummaryStats, TradeScore } from "@/lib/analytics/stats";
 import Link from "next/link";
+
+const VIEW_MODE_LABELS: Record<DashboardViewMode, string> = {
+  dollars: "Dollars",
+  percent: "Percentage",
+  rMultiple: "R-Multiple",
+  privacy: "Privacy",
+};
 
 type WidgetKey =
   | "stats"
@@ -63,10 +70,15 @@ export function DashboardClient({
   equityCurve,
   drawdownSeries,
   dailyPnl,
+  rStats,
+  rEquityCurve,
+  rDrawdownSeries,
+  rDailyPnl,
   startingBalance,
   progress,
   recentTrades,
   openPositions,
+  journaledDates,
 }: {
   stats: SummaryStats;
   tradeScore: TradeScore | null;
@@ -74,14 +86,24 @@ export function DashboardClient({
   equityCurve: EquityPoint[];
   drawdownSeries: { date: string; drawdown: number }[];
   dailyPnl: Record<string, number>;
+  /** Same shapes as their dollar counterparts, but every trade's netPnl
+   * has been replaced by its R-multiple — swapped in wholesale for the
+   * "R-Multiple" view mode rather than converting dollar figures
+   * post-hoc, since a trade's R depends on its own planned risk. */
+  rStats: SummaryStats;
+  rEquityCurve: EquityPoint[];
+  rDrawdownSeries: { date: string; drawdown: number }[];
+  rDailyPnl: Record<string, number>;
   startingBalance: number;
   progress: { streak: number; ruleCount: number; passedToday: number } | null;
   recentTrades: RecentTrade[];
   openPositions: RecentTrade[];
+  journaledDates: string[];
 }) {
   const [prefs, setPrefs] = useState(loadPrefs);
   const [showMenu, setShowMenu] = useState(false);
-  const [percentView, setPercentView] = useState(false);
+  const [showViewMenu, setShowViewMenu] = useState(false);
+  const [viewMode, setViewMode] = useState<DashboardViewMode>("dollars");
   const [mounted, setMounted] = useState(false);
   const [draggedKey, setDraggedKey] = useState<WidgetKey | null>(null);
   const [dragOverKey, setDragOverKey] = useState<WidgetKey | null>(null);
@@ -182,80 +204,112 @@ export function DashboardClient({
     setDragOverKey(null);
   };
 
-  const money = (value: number) =>
-    percentView && startingBalance > 0
-      ? formatPercent(value / startingBalance)
-      : formatCurrency(value);
+  const money = (value: number) => formatDashboardValue(value, viewMode, startingBalance);
+
+  // R-Multiple swaps in the whole R-substituted dataset (a trade's R
+  // depends on its own planned risk, not a single global divisor);
+  // dollars/percent/privacy are all just different string formatting
+  // of the same dollar-denominated data, handled by `money` above.
+  const activeStats = viewMode === "rMultiple" ? rStats : stats;
+  const activeEquityCurve = viewMode === "rMultiple" ? rEquityCurve : equityCurve;
+  const activeDrawdownSeries = viewMode === "rMultiple" ? rDrawdownSeries : drawdownSeries;
+  const activeDailyPnl = viewMode === "rMultiple" ? rDailyPnl : dailyPnl;
 
   const visibleOrder = mounted ? prefs.order : DEFAULT_ORDER;
   const hiddenSet = mounted ? new Set(prefs.hidden) : new Set<WidgetKey>();
 
   const widgetContent: Record<WidgetKey, React.ReactNode> = {
     stats: (
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <StatCard
-          label="Net P&L"
-          value={money(stats.netPnl)}
-          tone={stats.netPnl >= 0 ? "profit" : "loss"}
-        />
-        <div className="rounded-lg border border-border bg-surface p-4">
-          <RingStat
-            label="Win Rate"
-            value={stats.winRate}
-            displayValue={stats.winRate != null ? formatPercent(stats.winRate, 0) : "—"}
-            tone="profit"
+      <div>
+        {viewMode === "rMultiple" && (
+          <p className="mb-3 text-xs text-text-faint">
+            Only trades with a stop loss set have a defined R — everything below reflects those{" "}
+            {activeStats.closedTrades} trade{activeStats.closedTrades === 1 ? "" : "s"}.
+          </p>
+        )}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <StatCard
+            label="Net P&L"
+            value={money(activeStats.netPnl)}
+            tone={activeStats.netPnl >= 0 ? "profit" : "loss"}
           />
-        </div>
-        <div className="rounded-lg border border-border bg-surface p-4">
-          <RingStat
-            label="Profit Factor"
-            value={stats.profitFactor != null ? Math.min(stats.profitFactor / 3, 1) : null}
-            displayValue={stats.profitFactor != null ? stats.profitFactor.toFixed(2) : "—"}
-            tone="accent"
-          />
-        </div>
-        <StatCard label="Avg Win" value={money(stats.avgWin)} tone="profit" />
-        <StatCard label="Avg Loss" value={money(-stats.avgLoss)} tone="loss" />
-        <div className="rounded-lg border border-border bg-surface p-4">
-          <div className="text-xs text-text-faint">Current Streak</div>
-          <div className="mt-2 flex items-center gap-4">
-            <div>
-              <div
-                className={cn(
-                  "text-xl font-semibold",
-                  dayStreak > 0 ? "text-profit" : dayStreak < 0 ? "text-loss" : "text-text",
-                )}
-              >
-                {dayStreak === 0 ? "—" : Math.abs(dayStreak)}
+          <div className="rounded-lg border border-border bg-surface p-4">
+            <RingStat
+              label="Win Rate"
+              value={activeStats.winRate}
+              displayValue={activeStats.winRate != null ? formatPercent(activeStats.winRate, 0) : "—"}
+              tone="profit"
+            />
+          </div>
+          <div className="rounded-lg border border-border bg-surface p-4">
+            <RingStat
+              label="Profit Factor"
+              value={activeStats.profitFactor != null ? Math.min(activeStats.profitFactor / 3, 1) : null}
+              displayValue={activeStats.profitFactor != null ? activeStats.profitFactor.toFixed(2) : "—"}
+              tone="accent"
+            />
+          </div>
+          <StatCard label="Avg Win" value={money(activeStats.avgWin)} tone="profit" />
+          <StatCard label="Avg Loss" value={money(-activeStats.avgLoss)} tone="loss" />
+          <div className="rounded-lg border border-border bg-surface p-4">
+            <div className="text-xs text-text-faint">Current Streak</div>
+            <div className="mt-2 flex items-center gap-4">
+              <div>
+                <div
+                  className={cn(
+                    "text-xl font-semibold",
+                    dayStreak > 0 ? "text-profit" : dayStreak < 0 ? "text-loss" : "text-text",
+                  )}
+                >
+                  {dayStreak === 0 ? "—" : Math.abs(dayStreak)}
+                </div>
+                <div className="text-[10px] text-text-faint">
+                  {dayStreak > 0 ? "days" : dayStreak < 0 ? "days" : "days"}
+                </div>
               </div>
-              <div className="text-[10px] text-text-faint">
-                {dayStreak > 0 ? "days" : dayStreak < 0 ? "days" : "days"}
+              <div>
+                <div
+                  className={cn(
+                    "text-xl font-semibold",
+                    activeStats.currentStreak > 0
+                      ? "text-profit"
+                      : activeStats.currentStreak < 0
+                        ? "text-loss"
+                        : "text-text",
+                  )}
+                >
+                  {activeStats.currentStreak === 0 ? "—" : Math.abs(activeStats.currentStreak)}
+                </div>
+                <div className="text-[10px] text-text-faint">trades</div>
               </div>
-            </div>
-            <div>
-              <div
-                className={cn(
-                  "text-xl font-semibold",
-                  stats.currentStreak > 0
-                    ? "text-profit"
-                    : stats.currentStreak < 0
-                      ? "text-loss"
-                      : "text-text",
-                )}
-              >
-                {stats.currentStreak === 0 ? "—" : Math.abs(stats.currentStreak)}
-              </div>
-              <div className="text-[10px] text-text-faint">trades</div>
             </div>
           </div>
         </div>
       </div>
     ),
     tradeScore: <TradeScoreGauge score={tradeScore} />,
-    recentTrades: <RecentTradesWidget recent={recentTrades} open={openPositions} />,
-    equityCurve: <EquityCurveChart data={equityCurve} />,
-    drawdown: <DrawdownChart data={drawdownSeries} />,
-    calendar: <CalendarHeatmap dailyPnl={dailyPnl} />,
+    recentTrades: (
+      <RecentTradesWidget
+        recent={recentTrades}
+        open={openPositions}
+        viewMode={viewMode}
+        startingBalance={startingBalance}
+      />
+    ),
+    equityCurve: (
+      <EquityCurveChart data={activeEquityCurve} viewMode={viewMode} startingBalance={startingBalance} />
+    ),
+    drawdown: (
+      <DrawdownChart data={activeDrawdownSeries} viewMode={viewMode} startingBalance={startingBalance} />
+    ),
+    calendar: (
+      <CalendarHeatmap
+        dailyPnl={activeDailyPnl}
+        viewMode={viewMode}
+        startingBalance={startingBalance}
+        journaledDates={journaledDates}
+      />
+    ),
     progressTracker: progress ? (
       progress.ruleCount === 0 ? (
         <p className="text-sm text-text-faint">
@@ -288,18 +342,39 @@ export function DashboardClient({
   return (
     <div>
       <div className="mb-4 flex items-center justify-end gap-2">
-        <button
-          onClick={() => setPercentView((v) => !v)}
-          disabled={startingBalance <= 0}
-          title={
-            startingBalance <= 0
-              ? "Set a starting balance on an account to enable percent view"
-              : undefined
-          }
-          className="rounded-md border border-border-strong px-3 py-1.5 text-xs text-text-muted hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {percentView ? "Showing %" : "Showing $"}
-        </button>
+        <div className="relative">
+          <button
+            onClick={() => setShowViewMenu((v) => !v)}
+            className="flex items-center gap-1.5 rounded-md border border-border-strong px-3 py-1.5 text-xs text-text-muted hover:bg-surface-2"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" /> View: {VIEW_MODE_LABELS[viewMode]}
+          </button>
+          {showViewMenu && (
+            <div className="absolute right-0 z-10 mt-1 w-44 rounded-md border border-border bg-surface-2 p-1 shadow-lg">
+              {(Object.keys(VIEW_MODE_LABELS) as DashboardViewMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => {
+                    setViewMode(mode);
+                    setShowViewMenu(false);
+                  }}
+                  disabled={mode === "percent" && startingBalance <= 0}
+                  title={
+                    mode === "percent" && startingBalance <= 0
+                      ? "Set a starting balance on an account to enable percent view"
+                      : undefined
+                  }
+                  className={cn(
+                    "block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-40",
+                    viewMode === mode ? "text-accent" : "text-text",
+                  )}
+                >
+                  {VIEW_MODE_LABELS[mode]}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="relative">
           <button
             onClick={() => setShowMenu((v) => !v)}

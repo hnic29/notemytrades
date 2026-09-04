@@ -12,6 +12,24 @@ export function formatPercent(value: number, digits = 1) {
   return `${(value * 100).toFixed(digits)}%`;
 }
 
+/** Dashboard-wide "how should a $ figure be shown right now" switch —
+ * dollars/percent/privacy are all just different formatting of the
+ * same underlying dollar number; rMultiple expects `value` to already
+ * be in R units (a trade's own planned risk isn't a single constant
+ * you can divide an arbitrary dollar figure by). */
+export type DashboardViewMode = "dollars" | "percent" | "rMultiple" | "privacy";
+
+export function formatDashboardValue(
+  value: number,
+  mode: DashboardViewMode,
+  startingBalance: number,
+): string {
+  if (mode === "privacy") return "•••";
+  if (mode === "rMultiple") return `${value >= 0 ? "+" : ""}${value.toFixed(2)}R`;
+  if (mode === "percent" && startingBalance > 0) return formatPercent(value / startingBalance);
+  return formatCurrency(value);
+}
+
 export function formatDate(date: Date | string) {
   const d = typeof date === "string" ? new Date(date) : date;
   return new Intl.DateTimeFormat("en-US", {

@@ -10,9 +10,21 @@ import {
   YAxis,
 } from "recharts";
 import type { EquityPoint } from "@/lib/analytics/stats";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { formatDashboardValue, formatDate, type DashboardViewMode } from "@/lib/format";
 
-export function EquityCurveChart({ data }: { data: EquityPoint[] }) {
+export function EquityCurveChart({
+  data,
+  viewMode = "dollars",
+  startingBalance = 0,
+}: {
+  data: EquityPoint[];
+  /** Only the dashboard cares about this — other callers (Reports,
+   * Backtesting) just get plain dollar formatting. */
+  viewMode?: DashboardViewMode;
+  startingBalance?: number;
+}) {
+  const format = (v: number) => formatDashboardValue(v, viewMode, startingBalance);
+
   if (data.length < 2) {
     return (
       <div className="flex h-56 items-center justify-center text-sm text-text-faint">
@@ -41,7 +53,7 @@ export function EquityCurveChart({ data }: { data: EquityPoint[] }) {
         />
         <YAxis
           tick={{ fill: "#5c6a85", fontSize: 11 }}
-          tickFormatter={(v) => formatCurrency(v)}
+          tickFormatter={(v) => format(v)}
           axisLine={false}
           tickLine={false}
           width={70}
@@ -54,7 +66,7 @@ export function EquityCurveChart({ data }: { data: EquityPoint[] }) {
             fontSize: 12,
           }}
           labelFormatter={(v) => (v ? formatDate(String(v)) : "")}
-          formatter={(v) => [formatCurrency(Number(v)), "Equity"]}
+          formatter={(v) => [format(Number(v)), "Equity"]}
         />
         <Area
           type="monotone"

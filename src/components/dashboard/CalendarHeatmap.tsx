@@ -14,12 +14,26 @@ import {
   startOfWeek,
   subMonths,
 } from "date-fns";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, NotebookPen } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatCurrency } from "@/lib/format";
+import { formatDashboardValue, type DashboardViewMode } from "@/lib/format";
 
-export function CalendarHeatmap({ dailyPnl }: { dailyPnl: Record<string, number> }) {
+export function CalendarHeatmap({
+  dailyPnl,
+  viewMode = "dollars",
+  startingBalance = 0,
+  journaledDates = [],
+}: {
+  dailyPnl: Record<string, number>;
+  /** Only the dashboard cares about these — Reports' calendar just
+   * gets plain dollar formatting and no note markers. */
+  viewMode?: DashboardViewMode;
+  startingBalance?: number;
+  journaledDates?: string[];
+}) {
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
+  const money = (v: number) => formatDashboardValue(v, viewMode, startingBalance).replace(".00", "");
+  const notedSet = useMemo(() => new Set(journaledDates), [journaledDates]);
 
   const days = useMemo(() => {
     const start = startOfWeek(startOfMonth(month));
@@ -38,6 +52,19 @@ export function CalendarHeatmap({ dailyPnl }: { dailyPnl: Record<string, number>
     [dailyPnl],
   );
 
+  const monthSummary = useMemo(() => {
+    let total = 0;
+    let tradingDays = 0;
+    for (const day of days) {
+      if (!isSameMonth(day, month)) continue;
+      const pnl = dailyPnl[format(day, "yyyy-MM-dd")];
+      if (pnl == null) continue;
+      total += pnl;
+      tradingDays++;
+    }
+    return { total, tradingDays };
+  }, [days, month, dailyPnl]);
+
   return (
     <div>
       <div className="mb-3 flex items-center justify-between">
@@ -47,7 +74,20 @@ export function CalendarHeatmap({ dailyPnl }: { dailyPnl: Record<string, number>
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
-        <span className="text-sm font-medium text-text">{format(month, "MMMM yyyy")}</span>
+        <div className="flex flex-col items-center">
+          <span className="text-sm font-medium text-text">{format(month, "MMMM yyyy")}</span>
+          {monthSummary.tradingDays > 0 && (
+            <span
+              className={cn(
+                "text-[11px]",
+                monthSummary.total >= 0 ? "text-profit" : "text-loss",
+              )}
+            >
+              {money(monthSummary.total)} · {monthSummary.tradingDays} trading day
+              {monthSummary.tradingDays === 1 ? "" : "s"}
+            </span>
+          )}
+        </div>
         <button
           onClick={() => setMonth((m) => addMonths(m, 1))}
           className="rounded p-1 text-text-faint hover:bg-surface-2 hover:text-text"
@@ -78,13 +118,14 @@ export function CalendarHeatmap({ dailyPnl }: { dailyPnl: Record<string, number>
                 const pnl = dailyPnl[key];
                 const inMonth = isSameMonth(day, month);
                 const intensity = pnl ? Math.min(Math.abs(pnl) / maxAbs, 1) : 0;
+                const noted = notedSet.has(key);
 
                 return (
                   <Link
                     key={key}
                     href={`/journal?date=${key}`}
                     className={cn(
-                      "flex aspect-square flex-col items-center justify-center rounded text-[10px] transition-colors",
+                      "relative flex aspect-square flex-col items-center justify-center rounded text-[10px] transition-colors",
                       !inMonth && "opacity-30",
                       isToday(day) && "ring-1 ring-accent",
                       pnl == null && "bg-surface-2 text-text-faint",
@@ -102,10 +143,14 @@ export function CalendarHeatmap({ dailyPnl }: { dailyPnl: Record<string, number>
                         : undefined
                     }
                   >
-                    <span className="text-text-muted">{format(day, "d")}</span>
-                    {pnl != null && (
-                      <span className="font-medium">{formatCurrency(pnl).replace(".00", "")}</span>
+                    {noted && (
+                      <NotebookPen
+                        className="absolute right-0.5 top-0.5 h-2.5 w-2.5 text-accent"
+                        aria-label="Journaled"
+                      />
                     )}
+                    <span className="text-text-muted">{format(day, "d")}</span>
+                    {pnl != null && <span className="font-medium">{money(pnl)}</span>}
                   </Link>
                 );
               })}
@@ -119,7 +164,7 @@ export function CalendarHeatmap({ dailyPnl }: { dailyPnl: Record<string, number>
               >
                 {tradingDayCount > 0 ? (
                   <>
-                    <span className="font-medium">{formatCurrency(weekTotal).replace(".00", "")}</span>
+                    <span className="font-medium">{money(weekTotal)}</span>
                     <span className="text-text-faint">
                       {tradingDayCount} day{tradingDayCount === 1 ? "" : "s"}
                     </span>

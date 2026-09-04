@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { formatDashboardValue, formatDate, type DashboardViewMode } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export type RecentTrade = {
@@ -10,15 +10,21 @@ export type RecentTrade = {
   symbol: string;
   openedAt: Date;
   netPnl: number;
+  /** Null when the trade had no stop loss set — nothing to show in R-Multiple view. */
+  rMultiple: number | null;
   status: string;
 };
 
 export function RecentTradesWidget({
   recent,
   open,
+  viewMode,
+  startingBalance,
 }: {
   recent: RecentTrade[];
   open: RecentTrade[];
+  viewMode: DashboardViewMode;
+  startingBalance: number;
 }) {
   const [tab, setTab] = useState<"recent" | "open">("recent");
   const rows = tab === "recent" ? recent : open;
@@ -52,9 +58,15 @@ export function RecentTradesWidget({
                 <span className="rounded-full bg-surface-3 px-2 py-0.5 text-[10px] uppercase text-text-muted">
                   Open
                 </span>
+              ) : viewMode === "rMultiple" && t.rMultiple == null ? (
+                <span className="text-xs text-text-faint">no stop set</span>
               ) : (
                 <span className={cn("font-medium", t.netPnl >= 0 ? "text-profit" : "text-loss")}>
-                  {formatCurrency(t.netPnl)}
+                  {formatDashboardValue(
+                    viewMode === "rMultiple" ? (t.rMultiple ?? 0) : t.netPnl,
+                    viewMode,
+                    startingBalance,
+                  )}
                 </span>
               )}
             </Link>

@@ -1,9 +1,21 @@
 "use client";
 
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { formatDashboardValue, formatDate, type DashboardViewMode } from "@/lib/format";
 
-export function DrawdownChart({ data }: { data: { date: string; drawdown: number }[] }) {
+export function DrawdownChart({
+  data,
+  viewMode = "dollars",
+  startingBalance = 0,
+}: {
+  data: { date: string; drawdown: number }[];
+  /** Only the dashboard cares about this — other callers (Reports)
+   * just get plain dollar formatting. */
+  viewMode?: DashboardViewMode;
+  startingBalance?: number;
+}) {
+  const format = (v: number) => formatDashboardValue(v, viewMode, startingBalance);
+
   if (data.length < 2) {
     return (
       <div className="flex h-40 items-center justify-center text-sm text-text-faint">
@@ -32,7 +44,7 @@ export function DrawdownChart({ data }: { data: { date: string; drawdown: number
         />
         <YAxis
           tick={{ fill: "#5c6a85", fontSize: 11 }}
-          tickFormatter={(v) => formatCurrency(v)}
+          tickFormatter={(v) => format(v)}
           axisLine={false}
           tickLine={false}
           width={70}
@@ -45,7 +57,7 @@ export function DrawdownChart({ data }: { data: { date: string; drawdown: number
             fontSize: 12,
           }}
           labelFormatter={(v) => (v ? formatDate(String(v)) : "")}
-          formatter={(v) => [formatCurrency(Number(v)), "Drawdown"]}
+          formatter={(v) => [format(Number(v)), "Drawdown"]}
         />
         <Area
           type="monotone"
