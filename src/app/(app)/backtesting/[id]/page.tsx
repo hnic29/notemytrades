@@ -3,7 +3,7 @@ import Link from "next/link";
 import { getSession } from "@/lib/queries/backtesting";
 import { getSessionCandles } from "@/lib/backtesting/session-candles";
 import { BacktestWorkspace } from "@/components/backtesting/BacktestWorkspace";
-import type { ChartDrawing } from "@/components/backtesting/BacktestChart";
+import { mapChartDrawing } from "@/lib/backtesting/chart-drawing-map";
 
 export default async function BacktestSessionPage(props: PageProps<"/backtesting/[id]">) {
   const { id } = await props.params;
@@ -11,11 +11,7 @@ export default async function BacktestSessionPage(props: PageProps<"/backtesting
   if (!session) notFound();
 
   const candles = await getSessionCandles(session);
-  const drawings: ChartDrawing[] = session.drawings.map((d) =>
-    d.type === "horizontal"
-      ? { id: d.id, type: "horizontal", price1: d.price1, time1: null, time2: null, price2: null }
-      : { id: d.id, type: "trendline", time1: d.time1!, price1: d.price1, time2: d.time2!, price2: d.price2! },
-  );
+  const drawings = session.drawings.map(mapChartDrawing);
 
   return (
     <div>

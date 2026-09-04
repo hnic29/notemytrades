@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 import { getSessionByShareSlug } from "@/lib/queries/backtesting";
 import { getSessionCandles } from "@/lib/backtesting/session-candles";
 import { computeSummaryStats } from "@/lib/analytics/stats";
-import { BacktestChart, type ChartDrawing } from "@/components/backtesting/BacktestChart";
+import { BacktestChart } from "@/components/backtesting/BacktestChart";
+import { mapChartDrawing } from "@/lib/backtesting/chart-drawing-map";
 import { Logo } from "@/components/layout/Logo";
 import { formatCurrency, formatDate, formatPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -15,11 +16,7 @@ export default async function SharedBacktestPage(props: PageProps<"/s/backtestin
   if (!session) notFound();
 
   const candles = await getSessionCandles(session);
-  const drawings: ChartDrawing[] = session.drawings.map((d) =>
-    d.type === "horizontal"
-      ? { id: d.id, type: "horizontal", price1: d.price1, time1: null, time2: null, price2: null }
-      : { id: d.id, type: "trendline", time1: d.time1!, price1: d.price1, time2: d.time2!, price2: d.price2! },
-  );
+  const drawings = session.drawings.map(mapChartDrawing);
 
   const stats = computeSummaryStats(session.trades);
 

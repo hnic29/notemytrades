@@ -343,19 +343,25 @@ model BacktestSession {
   drawings ChartDrawing[]
 }
 
-// A user-drawn chart annotation. "horizontal" only uses price1 (a
-// price level, no time). "trendline" uses both points. Times are unix
-// seconds so a drawing renders correctly on any timeframe's chart —
-// the price/time axes are continuous, not tied to a specific bar grid.
+// A user-drawn chart annotation. Times are unix seconds so a drawing
+// renders correctly on any timeframe's chart — the price/time axes are
+// continuous, not tied to a specific bar grid.
+// - "horizontal": price1 only, no time.
+// - "vertical": time1 only, no price.
+// - "text": time1 + price1 (the anchor point) + label (the note text).
+// - "trendline" | "ray" | "rectangle" | "fibonacci" | "arrow": both points.
+//   "ray" extends past time2 in the time1->time2 direction; "fibonacci"
+//   treats price1 as the 0% level and price2 as the 100% level.
 model ChartDrawing {
   id        String          @id @default(cuid())
   sessionId String
   session   BacktestSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  type      String // "horizontal" | "trendline"
+  type      String // "horizontal" | "vertical" | "trendline" | "ray" | "rectangle" | "fibonacci" | "arrow" | "text"
   time1     Int?
-  price1    Float
+  price1    Float?
   time2     Int?
   price2    Float?
+  label     String?
   createdAt DateTime        @default(now())
 
   @@index([sessionId])
