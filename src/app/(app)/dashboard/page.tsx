@@ -28,12 +28,12 @@ export default async function DashboardPage() {
   ]);
 
   const stats = computeSummaryStats(trades);
-  const tradeScore = computeTradeScore(stats);
   const equityCurve = computeEquityCurve(trades, startingBalance);
   const drawdown = computeDrawdown(equityCurve);
   const dailyPnlMap = computeDailyPnl(trades);
   const dailyPnl = Object.fromEntries(dailyPnlMap);
   const dayStreak = computeDayStreak(dailyPnlMap);
+  const tradeScore = computeTradeScore(stats, drawdown, Array.from(dailyPnlMap.values()));
 
   const recentTrades: RecentTrade[] = trades
     .filter((t) => t.closedAt != null)

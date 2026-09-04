@@ -47,6 +47,19 @@
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  --animate-widget-snap: widget-snap 480ms ease-out;
+}
+
+/* A brief accent-colored pulse confirming a dragged dashboard widget has
+   settled into its new grid slot — see DashboardClient's FLIP reorder. */
+@keyframes widget-snap {
+  0% {
+    box-shadow: 0 0 0 2px var(--color-accent);
+  }
+  100% {
+    box-shadow: 0 0 0 2px transparent;
+  }
 }
 
 html {

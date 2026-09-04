@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Settings2, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StatCard } from "./StatCard";
@@ -11,7 +11,7 @@ import { TradeScoreGauge } from "./TradeScoreGauge";
 import { RingStat } from "./RingStat";
 import { RecentTradesWidget, type RecentTrade } from "./RecentTradesWidget";
 import { formatCurrency, formatPercent } from "@/lib/format";
-import type { EquityPoint, SummaryStats } from "@/lib/analytics/stats";
+import type { EquityPoint, SummaryStats, TradeScore } from "@/lib/analytics/stats";
 import Link from "next/link";
 
 type WidgetKey =
@@ -69,7 +69,7 @@ export function DashboardClient({
   openPositions,
 }: {
   stats: SummaryStats;
-  tradeScore: number | null;
+  tradeScore: TradeScore | null;
   dayStreak: number;
   equityCurve: EquityPoint[];
   drawdownSeries: { date: string; drawdown: number }[];
@@ -85,6 +85,14 @@ export function DashboardClient({
   const [mounted, setMounted] = useState(false);
   const [draggedKey, setDraggedKey] = useState<WidgetKey | null>(null);
   const [dragOverKey, setDragOverKey] = useState<WidgetKey | null>(null);
+  const [snappedKey, setSnappedKey] = useState<WidgetKey | null>(null);
+  const cardRefs = useRef<Map<WidgetKey, HTMLDivElement>>(new Map());
+  // Positions captured right before a drop reorders `prefs.order` — the
+  // layout effect below reads this once to FLIP-animate every widget
+  // from its old spot to its new one instead of letting the grid just
+  // jump. Only set inside `reorder`, so hide/show toggles (which also
+  // call `persist`) don't trigger it.
+  const flipFromRef = useRef<Map<WidgetKey, DOMRect> | null>(null);
 
   // Standard hydration-safe mount flag — localStorage-derived prefs must
   // render as the SSR default on first paint, then switch client-side.
@@ -109,10 +117,42 @@ export function DashboardClient({
     const from = order.indexOf(dragged);
     const to = order.indexOf(target);
     if (from === -1 || to === -1) return;
+
+    const rects = new Map<WidgetKey, DOMRect>();
+    cardRefs.current.forEach((el, key) => rects.set(key, el.getBoundingClientRect()));
+    flipFromRef.current = rects;
+
     order.splice(from, 1);
     order.splice(to, 0, dragged);
     persist({ ...prefs, order });
+    setSnappedKey(dragged);
   };
+
+  // FLIP: after the grid re-renders in the new order, every widget is
+  // already at its final position — this nudges each one back to where
+  // it visually was (via an instant transform) and then animates that
+  // transform away, so widgets glide into place instead of jumping.
+  useLayoutEffect(() => {
+    const prevRects = flipFromRef.current;
+    if (!prevRects) return;
+    flipFromRef.current = null;
+
+    cardRefs.current.forEach((el, key) => {
+      const prev = prevRects.get(key);
+      if (!prev) return;
+      const next = el.getBoundingClientRect();
+      const dx = prev.left - next.left;
+      const dy = prev.top - next.top;
+      if (dx === 0 && dy === 0) return;
+      el.style.transition = "none";
+      el.style.transform = `translate(${dx}px, ${dy}px)`;
+      el.getBoundingClientRect(); // force reflow before animating away from the transform above
+      requestAnimationFrame(() => {
+        el.style.transition = "transform 220ms cubic-bezier(0.2, 0, 0, 1)";
+        el.style.transform = "";
+      });
+    });
+  }, [prefs.order]);
 
   const handleDragStart = (key: WidgetKey) => (e: React.DragEvent<HTMLElement>) => {
     setDraggedKey(key);
@@ -211,11 +251,7 @@ export function DashboardClient({
         </div>
       </div>
     ),
-    tradeScore: (
-      <div className="flex justify-center">
-        <TradeScoreGauge score={tradeScore} />
-      </div>
-    ),
+    tradeScore: <TradeScoreGauge score={tradeScore} />,
     recentTrades: <RecentTradesWidget recent={recentTrades} open={openPositions} />,
     equityCurve: <EquityCurveChart data={equityCurve} />,
     drawdown: <DrawdownChart data={drawdownSeries} />,
@@ -301,15 +337,21 @@ export function DashboardClient({
           .map((key) => (
             <div
               key={key}
+              ref={(el) => {
+                if (el) cardRefs.current.set(key, el);
+                else cardRefs.current.delete(key);
+              }}
               data-widget-card
               onDragOver={handleDragOver(key)}
               onDrop={handleDrop(key)}
+              onAnimationEnd={() => setSnappedKey((k) => (k === key ? null : k))}
               className={cn(
-                "rounded-lg border bg-surface p-4 transition-colors",
-                (key === "equityCurve" || key === "drawdown" || key === "stats") &&
+                "rounded-lg border bg-surface p-4 transition-[opacity,transform,border-color,box-shadow] duration-150",
+                (key === "equityCurve" || key === "drawdown" || key === "stats" || key === "tradeScore") &&
                   "lg:col-span-2",
                 draggedKey === key ? "border-border opacity-40" : "border-border",
-                dragOverKey === key && draggedKey !== key && "border-accent",
+                dragOverKey === key && draggedKey !== key && "scale-[1.02] border-accent shadow-lg shadow-accent/10",
+                snappedKey === key && "animate-widget-snap",
               )}
             >
               <div className="mb-3 flex items-center gap-1.5">

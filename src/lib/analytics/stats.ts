@@ -178,20 +178,89 @@ function formatBucketLabel(lo: number, hi: number): string {
   return `${fmt(lo)} to ${fmt(hi)}`;
 }
 
+export type TradeScoreFactorKey =
+  | "profitFactor"
+  | "winRate"
+  | "avgWinLoss"
+  | "maxDrawdown"
+  | "recoveryFactor"
+  | "consistency";
+
+export type TradeScoreFactor = {
+  key: TradeScoreFactorKey;
+  label: string;
+  score: number; // 0..100
+  weight: number; // 0..1, sums to 1 across all factors
+};
+
+export type TradeScore = {
+  overall: number; // 0..100, the weighted blend of `factors`
+  factors: TradeScoreFactor[];
+};
+
+/** Each factor's raw stat, scaled 0-100 against its own "good" ceiling —
+ * not percentile ranks, just fixed reference points so the score reads
+ * the same regardless of trade count. Weights below are this app's own
+ * judgment call on what matters most, not a industry-standard split. */
+const TRADE_SCORE_WEIGHTS: Record<TradeScoreFactorKey, number> = {
+  profitFactor: 0.25,
+  winRate: 0.15,
+  avgWinLoss: 0.15,
+  maxDrawdown: 0.2,
+  recoveryFactor: 0.15,
+  consistency: 0.1,
+};
+
 /**
- * A simple, transparent 0-100 composite score — not a rigorous
- * statistical measure, just a rough at-a-glance blend of win rate,
- * profit factor, and win/loss size ratio, equally weighted. Returns
- * null when there isn't enough closed-trade history to be meaningful.
+ * A simple, transparent 0-100 composite score blending six angles on
+ * trading performance — not a rigorous statistical measure, just an
+ * at-a-glance read on profitability (profit factor, win rate, avg
+ * win/loss size), risk control (max drawdown), resilience after a
+ * losing stretch (recovery factor: net P&L relative to the worst
+ * drawdown), and how steady day-to-day results have been (consistency:
+ * inverse coefficient of variation on daily P&L). Returns null when
+ * there isn't enough closed-trade history to be meaningful.
+ *
+ * `dailyPnlValues` should be every day's realized P&L (win or loss,
+ * zero is fine) — used only for the consistency factor.
  */
-export function computeTradeScore(stats: SummaryStats): number | null {
+export function computeTradeScore(
+  stats: SummaryStats,
+  drawdown: { maxDrawdown: number; maxDrawdownPct: number },
+  dailyPnlValues: number[],
+): TradeScore | null {
   if (stats.closedTrades < 5) return null;
 
-  const winRateScore = (stats.winRate ?? 0) * 100;
   const profitFactorScore =
-    stats.profitFactor == null ? (stats.avgWin > 0 ? 100 : 0) : Math.min(stats.profitFactor / 3, 1) * 100;
-  const winLossRatioScore =
-    stats.avgLoss > 0 ? Math.min(stats.avgWin / stats.avgLoss / 2, 1) * 100 : 100;
+    stats.profitFactor == null ? (stats.avgWin > 0 ? 100 : 0) : Math.min(stats.profitFactor / 2, 1) * 100;
+  const winRateScore = Math.min((stats.winRate ?? 0) / 0.55, 1) * 100;
+  const avgWinLossScore = stats.avgLoss > 0 ? Math.min(stats.avgWin / stats.avgLoss / 2, 1) * 100 : 100;
+  const maxDrawdownScore = 100 - Math.min(drawdown.maxDrawdownPct / 0.3, 1) * 100;
+  const recoveryFactorScore =
+    stats.netPnl <= 0
+      ? 0
+      : drawdown.maxDrawdown <= 0
+        ? 100
+        : Math.min(stats.netPnl / drawdown.maxDrawdown / 2.5, 1) * 100;
+  const consistencyScore = (() => {
+    if (dailyPnlValues.length < 2) return 50; // not enough days to say anything either way
+    const mean = dailyPnlValues.reduce((s, v) => s + v, 0) / dailyPnlValues.length;
+    const meanAbs = dailyPnlValues.reduce((s, v) => s + Math.abs(v), 0) / dailyPnlValues.length;
+    if (meanAbs === 0) return 50;
+    const variance = dailyPnlValues.reduce((s, v) => s + (v - mean) ** 2, 0) / dailyPnlValues.length;
+    const coefficientOfVariation = Math.sqrt(variance) / meanAbs;
+    return 100 - Math.min(coefficientOfVariation / 2, 1) * 100;
+  })();
 
-  return Math.round((winRateScore + profitFactorScore + winLossRatioScore) / 3);
+  const factors: TradeScoreFactor[] = [
+    { key: "profitFactor", label: "Profit Factor", score: Math.round(profitFactorScore), weight: TRADE_SCORE_WEIGHTS.profitFactor },
+    { key: "winRate", label: "Win Rate", score: Math.round(winRateScore), weight: TRADE_SCORE_WEIGHTS.winRate },
+    { key: "avgWinLoss", label: "Avg Win/Loss", score: Math.round(avgWinLossScore), weight: TRADE_SCORE_WEIGHTS.avgWinLoss },
+    { key: "maxDrawdown", label: "Max Drawdown", score: Math.round(maxDrawdownScore), weight: TRADE_SCORE_WEIGHTS.maxDrawdown },
+    { key: "recoveryFactor", label: "Recovery Factor", score: Math.round(recoveryFactorScore), weight: TRADE_SCORE_WEIGHTS.recoveryFactor },
+    { key: "consistency", label: "Consistency", score: Math.round(consistencyScore), weight: TRADE_SCORE_WEIGHTS.consistency },
+  ];
+
+  const overall = Math.round(factors.reduce((sum, f) => sum + f.score * f.weight, 0));
+  return { overall, factors };
 }

@@ -158,33 +158,40 @@ describe("computePnlDistribution", () => {
 });
 
 describe("computeTradeScore", () => {
+  function scoreFor(trades: StatsTrade[]) {
+    const stats = computeSummaryStats(trades);
+    const drawdown = computeDrawdown(computeEquityCurve(trades, 10000));
+    const dailyPnl = Array.from(computeDailyPnl(trades).values());
+    return computeTradeScore(stats, drawdown, dailyPnl);
+  }
+
   it("returns null with fewer than 5 closed trades", () => {
-    const stats = computeSummaryStats([trade(100, "2026-01-01")]);
-    expect(computeTradeScore(stats)).toBeNull();
+    expect(scoreFor([trade(100, "2026-01-01")])).toBeNull();
   });
 
   it("scores a strong track record highly", () => {
-    const stats = computeSummaryStats([
+    const score = scoreFor([
       trade(300, "2026-01-01"),
       trade(300, "2026-01-02"),
       trade(300, "2026-01-03"),
       trade(300, "2026-01-04"),
       trade(-50, "2026-01-05"),
     ]);
-    const score = computeTradeScore(stats);
     expect(score).not.toBeNull();
-    expect(score!).toBeGreaterThan(80);
+    expect(score!.overall).toBeGreaterThan(80);
+    expect(score!.factors).toHaveLength(6);
+    const weightSum = score!.factors.reduce((sum, f) => sum + f.weight, 0);
+    expect(weightSum).toBeCloseTo(1, 5);
   });
 
   it("scores a weak track record lowly", () => {
-    const stats = computeSummaryStats([
+    const score = scoreFor([
       trade(-300, "2026-01-01"),
       trade(-300, "2026-01-02"),
       trade(-300, "2026-01-03"),
       trade(-300, "2026-01-04"),
       trade(50, "2026-01-05"),
     ]);
-    const score = computeTradeScore(stats);
-    expect(score!).toBeLessThan(30);
+    expect(score!.overall).toBeLessThan(30);
   });
 });
