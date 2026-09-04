@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Settings2 } from "lucide-react";
+import { Settings2, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StatCard } from "./StatCard";
 import { EquityCurveChart } from "./EquityCurveChart";
@@ -83,6 +83,8 @@ export function DashboardClient({
   const [showMenu, setShowMenu] = useState(false);
   const [percentView, setPercentView] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [draggedKey, setDraggedKey] = useState<WidgetKey | null>(null);
+  const [dragOverKey, setDragOverKey] = useState<WidgetKey | null>(null);
 
   // Standard hydration-safe mount flag — localStorage-derived prefs must
   // render as the SSR default on first paint, then switch client-side.
@@ -101,13 +103,43 @@ export function DashboardClient({
     persist({ ...prefs, hidden });
   };
 
-  const move = (key: WidgetKey, dir: -1 | 1) => {
+  const reorder = (dragged: WidgetKey, target: WidgetKey) => {
+    if (dragged === target) return;
     const order = [...prefs.order];
-    const idx = order.indexOf(key);
-    const swapWith = idx + dir;
-    if (swapWith < 0 || swapWith >= order.length) return;
-    [order[idx], order[swapWith]] = [order[swapWith], order[idx]];
+    const from = order.indexOf(dragged);
+    const to = order.indexOf(target);
+    if (from === -1 || to === -1) return;
+    order.splice(from, 1);
+    order.splice(to, 0, dragged);
     persist({ ...prefs, order });
+  };
+
+  const handleDragStart = (key: WidgetKey) => (e: React.DragEvent<HTMLElement>) => {
+    setDraggedKey(key);
+    e.dataTransfer.effectAllowed = "move";
+    // Drag the whole card as the ghost image, not just the small handle
+    // the drag actually started from.
+    const card = e.currentTarget.closest<HTMLElement>("[data-widget-card]");
+    if (card) e.dataTransfer.setDragImage(card, 24, 24);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedKey(null);
+    setDragOverKey(null);
+  };
+
+  const handleDragOver = (key: WidgetKey) => (e: React.DragEvent<HTMLDivElement>) => {
+    if (!draggedKey || draggedKey === key) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverKey(key);
+  };
+
+  const handleDrop = (key: WidgetKey) => (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (draggedKey) reorder(draggedKey, key);
+    setDraggedKey(null);
+    setDragOverKey(null);
   };
 
   const money = (value: number) =>
@@ -241,34 +273,22 @@ export function DashboardClient({
           </button>
           {showMenu && (
             <div className="absolute right-0 z-10 mt-1 w-56 rounded-md border border-border bg-surface-2 p-2 shadow-lg">
-              {prefs.order.map((key, i) => (
-                <div key={key} className="flex items-center justify-between rounded px-2 py-1.5 text-sm text-text hover:bg-surface-3">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={!prefs.hidden.includes(key)}
-                      onChange={() => toggleHidden(key)}
-                      className="accent-accent"
-                    />
-                    {WIDGET_LABELS[key]}
-                  </label>
-                  <div className="flex gap-1">
-                    <button
-                      disabled={i === 0}
-                      onClick={() => move(key, -1)}
-                      className="text-text-faint hover:text-text disabled:opacity-20"
-                    >
-                      ↑
-                    </button>
-                    <button
-                      disabled={i === prefs.order.length - 1}
-                      onClick={() => move(key, 1)}
-                      className="text-text-faint hover:text-text disabled:opacity-20"
-                    >
-                      ↓
-                    </button>
-                  </div>
-                </div>
+              <p className="mb-1 px-2 pb-1 text-[11px] text-text-faint">
+                Drag a widget&apos;s handle below to reorder it.
+              </p>
+              {prefs.order.map((key) => (
+                <label
+                  key={key}
+                  className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-text hover:bg-surface-3"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!prefs.hidden.includes(key)}
+                    onChange={() => toggleHidden(key)}
+                    className="accent-accent"
+                  />
+                  {WIDGET_LABELS[key]}
+                </label>
               ))}
             </div>
           )}
@@ -281,13 +301,29 @@ export function DashboardClient({
           .map((key) => (
             <div
               key={key}
+              data-widget-card
+              onDragOver={handleDragOver(key)}
+              onDrop={handleDrop(key)}
               className={cn(
-                "rounded-lg border border-border bg-surface p-4",
+                "rounded-lg border bg-surface p-4 transition-colors",
                 (key === "equityCurve" || key === "drawdown" || key === "stats") &&
                   "lg:col-span-2",
+                draggedKey === key ? "border-border opacity-40" : "border-border",
+                dragOverKey === key && draggedKey !== key && "border-accent",
               )}
             >
-              <h2 className="mb-3 text-sm font-medium text-text-muted">{WIDGET_LABELS[key]}</h2>
+              <div className="mb-3 flex items-center gap-1.5">
+                <span
+                  draggable
+                  onDragStart={handleDragStart(key)}
+                  onDragEnd={handleDragEnd}
+                  title="Drag to reorder"
+                  className="-ml-1 cursor-grab text-text-faint hover:text-text active:cursor-grabbing"
+                >
+                  <GripVertical className="h-3.5 w-3.5" />
+                </span>
+                <h2 className="text-sm font-medium text-text-muted">{WIDGET_LABELS[key]}</h2>
+              </div>
               {widgetContent[key]}
             </div>
           ))}
